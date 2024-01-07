@@ -1,0 +1,7 @@
+# if using GPU and CUDA 11.8 then add --index-url https://download.pytorch.org/whl/cu118
+# see (https://pytorch.org/get-started/locally/)
+torch==2.1.2        # --index-url https://download.pytorch.org/whl/cu118
+torchvision==0.16.2 # --index-url https://download.pytorch.org/whl/cu118
+torchaudio==2.1.2   # --index-url https://download.pytorch.org/whl/cu118
+pandas_market_calendars==4.3.3
+yfinance==0.2.34
