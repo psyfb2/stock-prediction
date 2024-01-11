@@ -138,7 +138,7 @@ def get_historical_data(symbol: str, start_date: str, end_date: str,
         df.to_csv(cached_file_path, index=False)
 
     validate_historical_data(df, start_date_str, end_date_str, 
-                             candle_size, outside_rth, "NASDAQ" if not exchange else exchange)
+                             candle_size, outside_rth, yf.Ticker(symbol).info["exchange"] if not exchange else exchange)
     return df
 
 
@@ -158,7 +158,7 @@ def _get_historical_data(symbol: str, start_date: str, end_date: str,
         (pd.DataFrame): dataframe containing ['t', 'o', 'c', 'h', 'l', 'v'] columns. 't' column relative to UTC.
     """
     logger.info(f"Making yfinance request with start='{start_date}', end='{end_date}', "
-                f"prepost={outside_rth}, interval='{candle_size}'")
+                f"prepost={outside_rth}, interval='{candle_size}' for ticker '{symbol}'")
     
     ticker = yf.Ticker(symbol)
     df = ticker.history(start=start_date, end=end_date, prepost=outside_rth, interval=candle_size).reset_index()
@@ -193,7 +193,8 @@ def validate_historical_data(df: pd.DataFrame, start_date: str, end_date: str, c
         inclusive_end_date = (parse(end_date) - timedelta(days=1)).strftime("%Y-%m-%d")
         dates = exchange.valid_days(start_date=start_date, end_date=inclusive_end_date)
 
-        assert len(df) == len(dates), f"Expected df to have len {len(dates)}, but got {len(df)}.\ndates:\n{dates}\ndf['t']:\n{df['t']}"
+        assert len(df) == len(dates), (f"Expected df to have len {len(dates)}, "
+            f"but got {len(df)}.\ndates:\n{dates}\ndf['t']:\n{df['t']}\nUsing exchange {market_calander_name}")
 
         df_idx = 0
         for date in dates:
@@ -222,6 +223,39 @@ def get_all_sp500_tickers() -> List[str]:
         tickers.append(ticker)
     
     return tickers
+
+
+def get_vix_daily_data(vix_ticker: str) -> pd.DataFrame:
+    """ get daily vix data until the last trading day.
+
+    Args:
+        vix_ticker (str): one of:
+            VIX: VIX (IV of S&P 500) data starting from 1990-01-02 with columns t, o, c, h, l
+            VVIX: VVIX (IV of VIX) data starting from 2006-06-03 with columns t, c
+            VXN: VXN (IV of nasdaq-100) data starting from 2009-09-14 with columns t, o, c, h, l
+            GVZ: GVZ (IV of Gold ETF) data starting from 2009-09-18 with columns t, c
+            OVX: OVX (IV of Crude Oil ETF) data starting from 2009-09-18 with columns t, c
+
+    Returns:
+        pd.DataFrame: dataframe containing vix data
+    """
+    vix_folder = CACHE_DIR + os.sep + "vix_data"
+    if not os.path.exists(vix_folder):
+        os.makedirs(vix_folder)
+    file_prefix =  vix_folder + os.sep + vix_ticker
+
+    try:
+        df = pd.read_csv(file_prefix + datetime.today().strftime('%Y-%m-%d') + ".csv")
+    except FileNotFoundError:
+        logger.info(f"Making request to CBOE for {vix_ticker} data")
+        df = pd.read_csv(f"https://cdn.cboe.com/api/global/us_indices/daily_prices/{vix_ticker}_History.csv")
+        df = df.rename(columns={"DATE": "t", "OPEN": "o", "CLOSE": "c", "LOW": "l", "HIGH": "h", 
+                                "VVIX": "c", "VXN": "c", "GVZ": "c", "OVX": "c"})
+        df.to_csv(file_prefix + datetime.today().strftime('%Y-%m-%d') + ".csv", index=False)
+
+    df["t"] = pd.to_datetime(df["t"])
+    return df
+
 
 if __name__ == "__main__":
     # test retrieving data with live API

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pandas as pd
 
 from logging import Logger
@@ -80,8 +82,8 @@ class BasePreprocessor(ABC):
         self._logger.info(f"Calculated pre-processed df:\n{df}")
         return df
     
-    def normalise_df(self, df: pd.DataFrame, means: Dict[str, float], stds: Dict[str, float]) -> pd.DataFrame:
-        """ Normalise dataframe. If a column is bounded will use min-max scaling otherwise will
+    def normalise_df(self, df: pd.DataFrame, means: Dict[str, float], stds: Dict[str, float]):
+        """ Normalise dataframe in-place. If a column is bounded will use min-max scaling otherwise will
         use standardisation. Also ["t", "o", "c", "h", "l", "v"] columns are left unchanged.
 
         Args:
@@ -101,3 +103,22 @@ class BasePreprocessor(ABC):
             else:
                 # standardise
                 df[col] = (df[col] - means[col]) / stds[col]
+    
+    def adjust_start_date(self, start_date: datetime, num_candles_to_stack: int) -> datetime:
+        """ some data at the start is NaN due to preprocessing (e.g. when calculating moving average)
+        so move back the start date to compensate for this. May move start date too far
+        backwards but can just remove any data which preceeds the original start date. 
+
+        Args:
+            start_date (datetime): datetime obj for start_date for which to load data
+            num_candles_to_stack (int): number of candles which are going to be stacked.
+
+        Returns:
+            datetime: modified start_date which will contain the original start_date
+                after preprocessing and candle stacking, but might overshoot.
+        """
+        if self.candle_size == "1d":
+            return start_date - timedelta(
+                days=int((365/252) * (self.min_rows_required + num_candles_to_stack)) + 30
+            )
+        raise NotImplementedError
