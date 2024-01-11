@@ -88,7 +88,8 @@ def _cached_file_with_most_overlap(symbol: str, start_date: str, end_date: str,
 
 
 def get_historical_data(symbol: str, start_date: str, end_date: str, 
-                        candle_size='1d', exchange='', outside_rth=False)  -> pd.DataFrame:
+                        candle_size='1d', exchange='', outside_rth=False,
+                        raise_invalid_data_exception=False)  -> pd.DataFrame:
     """ Get historical data for given stock. Uses local file cache to reduce number of API calls.
 
     Args:
@@ -98,9 +99,15 @@ def get_historical_data(symbol: str, start_date: str, end_date: str,
         candle_size (str, optional): candle size to use. Defaults to '1d'.
         exchange (str, optional): exchange to use, by default will use primary exchange for symbol.
         outside_rth (bool, optional): get outside regular trading hours data too? Defaults to False.
+        raise_invalid_data_exception (bool, optional): raise an exception if requested data contains
+            missing rows? If False will just log a warning.
     Returns:
         pd.Dataframe: dataframe containing ['t', 'o', 'c', 'h', 'l', 'v'] columns. 't' column relative to UTC.
     """
+    logger.info(f"Getting historical data for symbol='{symbol}', start_date='{start_date}', "
+                f"end_date='{end_date}', candle_size='{candle_size}', exchange='{exchange}', "
+                f"outside_rth={outside_rth}, raise_invalid_data_exception={raise_invalid_data_exception}")
+
     cached_file = _cached_file_with_most_overlap(symbol, start_date, end_date, candle_size, exchange, outside_rth)
     write_df_to_cache = True
     start_date_str, end_date_str = start_date, end_date
@@ -137,8 +144,15 @@ def get_historical_data(symbol: str, start_date: str, end_date: str,
         )
         df.to_csv(cached_file_path, index=False)
 
-    validate_historical_data(df, start_date_str, end_date_str, 
-                             candle_size, outside_rth, yf.Ticker(symbol).info["exchange"] if not exchange else exchange)
+    try:
+        validate_historical_data(df, start_date_str, end_date_str, 
+                                candle_size, outside_rth, 
+                                yf.Ticker(symbol).info["exchange"] if not exchange else exchange)
+    except AssertionError as ex:
+        if raise_invalid_data_exception:
+            raise ex
+        logger.warning(f"Invalid data for ticker '{symbol}', with start_date='{start_date}', "
+                       f"end_date='{end_date}', candle_size='{candle_size}'\n{ex}")
     return df
 
 
@@ -188,21 +202,32 @@ def validate_historical_data(df: pd.DataFrame, start_date: str, end_date: str, c
         outside_rth (bool): request for outside regular trading hours data?
         market_calander_name (str): the name of the exchange. e.g. "NYSE".
     """    
+    if market_calander_name.upper() in ("NYQ", "NMS"):
+        market_calander_name = "NYSE"
+
     if candle_size == "1d":
-        exchange = mcal.get_calendar(market_calander_name)
+        try:
+            exchange = mcal.get_calendar(market_calander_name)
+        except RuntimeError as ex:
+            logger.warning(f"exchange {market_calander_name} not recognised, cannot validate data. Exact exception:\n{ex}")
+            return
+
         inclusive_end_date = (parse(end_date) - timedelta(days=1)).strftime("%Y-%m-%d")
         dates = exchange.valid_days(start_date=start_date, end_date=inclusive_end_date)
 
-        assert len(df) == len(dates), (f"Expected df to have len {len(dates)}, "
-            f"but got {len(df)}.\ndates:\n{dates}\ndf['t']:\n{df['t']}\nUsing exchange {market_calander_name}")
-
         df_idx = 0
         for date in dates:
+            if df_idx >= len(df):
+                break
+
             # same yyyy-mm-dd?
             assert df['t'].iloc[df_idx].date() == date.date(), (f"Check df['t'].iloc[{df_idx}], "
                 f"expected date part to be {date.date()}, but was {df['t'].iloc[df_idx].date()}")
                 
             df_idx += 1
+        
+        assert len(df) == len(dates), (f"Expected df to have len {len(dates)}, "
+            f"but got {len(df)}.\ndates:\n{dates}\ndf['t']:\n{df['t']}\nUsing exchange {market_calander_name}")
     else:
         logger.warning(f"validation of data df not currently implemented for candle size '{candle_size}'")
 

@@ -102,6 +102,7 @@ class AssetPreprocessor(BasePreprocessor):
         df['bbu'] = (df['c'] / bbands['BBU_20_2.0']) - 1  # % increase of c from bbu
 
         df['ema10']  = (df['c'] / ta.ema(df['c'], length=10))  - 1  # % increase of c from ema10
+        df['ema20']  = (df['c'] / ta.ema(df['c'], length=20))  - 1  # % increase of c from ema10
         df['ema50']  = (df['c'] / ta.ema(df['c'], length=50))  - 1  # % increase of c from ema50
         df['ema100'] = (df['c'] / ta.ema(df['c'], length=100)) - 1  # % increase of c from ema100
         df['ema200'] = (df['c'] / ta.ema(df['c'], length=200)) - 1  # % increase of c from ema200

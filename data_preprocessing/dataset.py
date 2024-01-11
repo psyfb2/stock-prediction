@@ -5,8 +5,9 @@ from dateutil.parser import parse
 import pandas as pd
 from torch.utils.data import Dataset
 
-from data_collection.historical_data import get_historical_data, get_vix_daily_data
-from data_preprocessing.asset_preprocessor import AssetPreprocessor, VixPreprocessor
+from data_collection.historical_data import get_historical_data, get_vix_daily_data, validate_historical_data
+from data_preprocessing.asset_preprocessor import AssetPreprocessor
+from data_preprocessing.vix_preprocessor import VixPreprocessor
 from data_preprocessing.labelling import binary_label_tp_tsl
 from data_preprocessing.index_mapper import IndexMapper
 
@@ -104,14 +105,20 @@ class StocksDatasetInMem(Dataset):
         
         for ticker in tickers:
             df = get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=end_date, candle_size=candle_size)
-            df = preprocessor.preprocess_ochl_df(df)
+
+            try:
+                df = preprocessor.preprocess_ochl_df(df)
+            except ValueError as ex:
+                logger.exception(f"Got exception while preprocessing df, will skip this ticker. ex:\n{ex}")
+                continue
 
             # the first candle after performing stacking should have be the first date after or including start_date
             start_date_idx = df[df["t"] >= start_date].index[0]
-            df = df.iloc[start_date_idx - num_candles_to_stack + 1:]
+            df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
 
             df["labels"] = binary_label_tp_tsl(df, tp, tsl)
-            logger.info(f"labels for ticker '{ticker}' has {(df['labels'].isna().sum() / len(df)) * 100}% NaNs, these will be removed.")
+            logger.info(f"label counts:\n{df['labels'].value_counts(normalize=True)}")
+            logger.info(f"labels has {(df['labels'].isna().sum() / len(df)) * 100}% NaNs, these will be removed.")
 
             nan_indicies = list(df.loc[pd.isna(df['labels']), :].index)
             if not all([nan_indicies[i + 1] == nan_indicies[i] + 1 for i in range(len(nan_indicies) - 1)]):
@@ -128,30 +135,26 @@ class StocksDatasetInMem(Dataset):
             lengths.append(len(df))
         
         data_df = pd.concat(all_dfs, ignore_index=True)
+        logger.info(f"all data label counts:\n{data_df['labels'].value_counts(normalize=True)}")
 
-        # add VIX and VVIX data as broad market sentiment indicators
+        # add VIX data as broad market sentiment indicators
         vix_preprocessor = VixPreprocessor()
 
         vix_df = get_vix_daily_data("VIX")
         vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h"])
-        vix_df = vix_df.rename(columns={col : f"vix_{col}" for col in vix_df.columns})
+        vix_df = vix_df.rename(columns={col : f"vix_{col}" for col in vix_df.columns if col != 't'})
         preprocessor.bounded_cols.update({f"vix_{k}": v for k, v in vix_preprocessor.bounded_cols.items()})
 
-        data_df = data_df.merge(vix_df, on="t")
+        unmerged_data_df = data_df
+        data_df = data_df.merge(vix_df, on="t", how="left")
+        assert all(unmerged_data_df["t"] == data_df["t"]), f"Merging has not preserved order of rows!"
         
-        vvix_df = get_vix_daily_data("VVIX")
-        vvix_df = vix_preprocessor.preprocess_ochl_df(vvix_df).drop(columns=["c"]) 
-        vvix_df = vvix_df.rename(columns={col : f"vvix_{col}" for col in vvix_df.columns})
-        preprocessor.bounded_cols.update({f"vvix_{k}": v for k, v in vix_preprocessor.bounded_cols.items()})
-
-        data_df = data_df.merge(vvix_df, on="t")
-
         # normalise data
         if not means or not stds:
             means = data_df.mean(numeric_only=True)
             stds  = data_df.std(numeric_only=True)
         preprocessor.normalise_df(data_df, means, stds)
 
-        assert len(df) == sum(lengths), f"length of df is {len(df)}, but expected it to be {sum(lengths)}"
+        assert len(data_df) == sum(lengths), f"length of data_df is {len(data_df)}, but expected it to be {sum(lengths)}"
 
-        return data_df, lengths, means, stds
+        return data_df, lengths, dict(means), dict(stds)

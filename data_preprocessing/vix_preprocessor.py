@@ -46,7 +46,7 @@ class VixPreprocessor(BasePreprocessor):
         df['rank_126'] = df['c'].rolling(126).apply(lambda x: (x.iloc[-1] - x.min()) / (x.max() - x.min()))
         df['rank_30']  = df['c'].rolling(30 ).apply(lambda x: (x.iloc[-1] - x.min()) / (x.max() - x.min()))
 
-        macd = percentage_macd.percentage_macd(close=df['c'], fast=12, slow=26, signal=9)
+        macd = percentage_macd(close=df['c'], fast=12, slow=26, signal=9)
         df['macd']        = macd['MACD_12_26_9']
         df['macd_signal'] = macd['MACDs_12_26_9']
         # ------ ------ #

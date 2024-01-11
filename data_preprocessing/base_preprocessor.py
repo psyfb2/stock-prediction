@@ -67,7 +67,7 @@ class BasePreprocessor(ABC):
         if len(df) < self.min_rows_required:
             raise ValueError(f"df must have atleast {self.min_rows_required} rows, got the following df instead:\n{df}")
         
-        if set(df.columns) not in ({"t", "o", "c", "h", "l", "v"}, {"t", "c"}):
+        if set(df.columns) not in ({"t", "o", "c", "h", "l", "v"}, {"t", "c"}, {"t", "o", "c", "h", "l"}):
             raise ValueError(f'df must have columns ["t", "o", "c", "h", "l", "v"] or ["t", "c"]. df has columns:\n{df.columns}')
 
         self._logger.info(f"Initiating preprocesing of df:\n{df}")
