@@ -67,10 +67,6 @@ def main(train_config: dict):
 
     model_cfg = train_config["model_config"]
 
-    # TODO: REMOVE ME
-    model_cfg["max_epochs"] = 1
-    train_config["tickers"] = train_config["tickers"][:2]
-
     # load all data for tickers into file cache (this is only neccessary because of yfinance 2K requests rate limit per hour)
     # loading into file cache means 1 req per ticker instead of 3 (train, val, test)
     preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
