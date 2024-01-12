@@ -529,7 +529,21 @@
   "candle_size": "1d",
   "tp": 0.06,
   "tsl": 0.04,
-  "batch_size": 64,
   "experiment_name": "base_experiment",
-  "storage_path": "training_artifacts/supervised_learning"
+  "storage_path": "training_artifacts/supervised_learning",
+  "model_config": {
+    "d_model": 512,
+    "nhead": 8,
+    "num_encoder_layers": 6,
+    "dim_feedforward": 2048,
+    "dropout": 0.1,
+    "layer_norm_eps": 0.00001,
+    "norm_first": false,
+    "lr_mul": 1.0,
+    "n_warmup_steps": 4000,
+    "label_smoothing": 0.1,
+    "patience": 100,
+    "max_epochs": 100000,
+    "batch_size": 64
+  }
 }

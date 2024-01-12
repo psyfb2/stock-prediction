@@ -3,6 +3,7 @@ from typing import List, Dict, Tuple, Optional
 from dateutil.parser import parse
 
 import pandas as pd
+import numpy as np
 from torch.utils.data import Dataset
 
 from data_collection.historical_data import get_historical_data, get_vix_daily_data, validate_historical_data
@@ -44,8 +45,8 @@ class StocksDatasetInMem(Dataset):
             means=means, stds=stds, candle_size=candle_size
         )
 
-        self.features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy()  # (N, D)
-        self.labels   = data_df["labels"].to_numpy()  # (N, )
+        self.features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy(dtype=np.float32)  # (N, D)
+        self.labels   = data_df["labels"].to_numpy(dtype=np.int64)  # (N, )
         self.lengths = lengths
         self.num_candles_to_stack = num_candles_to_stack
         self.means = means
