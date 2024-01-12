@@ -3,9 +3,10 @@ import sys
 import os
 import json
 import time
+from typing import Optional, Tuple
 from argparse import ArgumentParser
 from datetime import datetime
-from typing import Optional, Tuple
+from dateutil.parser import parse
 
 import torch
 import numpy as np
@@ -68,13 +69,13 @@ def main(train_config: dict):
 
     # load all data for tickers into file cache (this is only neccessary because of yfinance 2K requests rate limit per hour)
     # loading into file cache means 1 req per ticker instead of 3 (train, val, test)
-    # preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
-    # adjusted_start_date = preprocessor.adjust_start_date(
-    #     parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
-    # ).strftime("%Y-%m-%d")
-    # for ticker in train_config["tickers"]:
-    #     get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=train_config["test_end_date"],
-    #                         candle_size=train_config["candle_size"])
+    preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
+    adjusted_start_date = preprocessor.adjust_start_date(
+        parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
+    ).strftime("%Y-%m-%d")
+    for ticker in train_config["tickers"]:
+        get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=train_config["test_end_date"],
+                            candle_size=train_config["candle_size"])
     
     # load preprocessed datasets (train, val, test)
     train_dataset = StocksDatasetInMem(
