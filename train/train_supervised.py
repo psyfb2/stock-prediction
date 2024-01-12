@@ -138,7 +138,7 @@ def main(train_config: dict):
     early_stopper = EarlyStopper(patience=model_cfg["patience"])
     writer = SummaryWriter(log_dir=local_storage_dir)
     logger.info(f"Starting training, train dataset length = {len(train_dataloader.dataset)}.")
-    logger.info(f"View TensorBoard logs at dir: {local_storage_dir})
+    logger.info(f"View TensorBoard logs at dir: {local_storage_dir}")
 
 
     for epoch in range(model_cfg["max_epochs"]):
