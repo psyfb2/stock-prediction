@@ -110,11 +110,22 @@ class StocksDatasetInMem(Dataset):
             try:
                 df = preprocessor.preprocess_ochl_df(df)
             except ValueError as ex:
-                logger.exception(f"Got exception while preprocessing df, will skip this ticker. ex:\n{ex}")
+                logger.exception(f"Got exception while preprocessing df, will skip this ticker.")
                 continue
 
             # the first candle after performing stacking should have be the first date after or including start_date
-            start_date_idx = df[df["t"] >= start_date].index[0]
+            try:
+                start_date_idx = df[df["t"] >= start_date].index[0]
+            except IndexError as ex:
+                logger.exception(f"Not enough data, df has no rows after start_date '{start_date}'. "
+                                 f"Check data collection, will skip this ticker.")
+                continue
+
+            if start_date_idx - num_candles_to_stack + 1 < 0:
+                logger.warning(f"Not enough data. Check data collection, start_date_idx is {start_date_idx}. "
+                               f"but expected it to be atleast {num_candles_to_stack - 1}, will skip this ticker.")
+                continue
+
             df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
 
             df["labels"] = binary_label_tp_tsl(df, tp, tsl)
@@ -129,7 +140,7 @@ class StocksDatasetInMem(Dataset):
             if len(df) < num_candles_to_stack:
                 logger.warning(f"ticker '{ticker}' with start_date={start_date}, end_date={end_date} and candle_size={candle_size} "
                                f"only has {len(df)} candles after preprocessing. This is less than num_candles_to_stack={num_candles_to_stack} "
-                               f"and so this ticker will not be included in the dataset.")
+                               f"and so will skip this ticker.")
                 continue
             
             all_dfs.append(df)

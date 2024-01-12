@@ -5,15 +5,17 @@ import json
 import time
 from argparse import ArgumentParser
 from datetime import datetime
-from copy import deepcopy
-from dateutil.parser import parse
+from typing import Optional, Tuple
 
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 from torch import nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
+from sklearn.metrics import roc_curve, classification_report
+from matplotlib.pyplot import plt
 
 from data_collection.historical_data import get_historical_data
 from data_preprocessing.asset_preprocessor import AssetPreprocessor
@@ -66,13 +68,13 @@ def main(train_config: dict):
 
     # load all data for tickers into file cache (this is only neccessary because of yfinance 2K requests rate limit per hour)
     # loading into file cache means 1 req per ticker instead of 3 (train, val, test)
-    preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
-    adjusted_start_date = preprocessor.adjust_start_date(
-        parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
-    ).strftime("%Y-%m-%d")
-    for ticker in train_config["tickers"]:
-        get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=train_config["test_end_date"],
-                            candle_size=train_config["candle_size"])
+    # preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
+    # adjusted_start_date = preprocessor.adjust_start_date(
+    #     parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
+    # ).strftime("%Y-%m-%d")
+    # for ticker in train_config["tickers"]:
+    #     get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=train_config["test_end_date"],
+    #                         candle_size=train_config["candle_size"])
     
     # load preprocessed datasets (train, val, test)
     train_dataset = StocksDatasetInMem(
@@ -93,16 +95,16 @@ def main(train_config: dict):
         means=means, stds=stds, candle_size=train_config["candle_size"]
     )
 
-    # test_dataset = StocksDatasetInMem(
-    #     tickers=train_config["tickers"], start_date=train_config["test_start_date"], 
-    #     end_date=train_config["test_end_date"], tp=train_config["tp"], tsl=train_config["tsl"],
-    #     num_candles_to_stack=train_config["num_candles_to_stack"],
-    #     means=means, stds=stds, candle_size=train_config["candle_size"]
-    # )
+    test_dataset = StocksDatasetInMem(
+        tickers=train_config["tickers"], start_date=train_config["test_start_date"], 
+        end_date=train_config["test_end_date"], tp=train_config["tp"], tsl=train_config["tsl"],
+        num_candles_to_stack=train_config["num_candles_to_stack"],
+        means=means, stds=stds, candle_size=train_config["candle_size"]
+    )
 
     train_dataloader = DataLoader(train_dataset, batch_size=model_cfg["batch_size"], shuffle=True)
     val_dataloader   = DataLoader(val_dataset,   batch_size=model_cfg["batch_size"])
-    # test_dataloader  = DataLoader(test_dataset,  batch_size=model_cfg["batch_size"])
+    test_dataloader  = DataLoader(test_dataset,  batch_size=model_cfg["batch_size"])
 
     # initialise model
     device = get_device()
@@ -127,10 +129,6 @@ def main(train_config: dict):
 
     # train model using earling stopping
     early_stopper = EarlyStopper(patience=model_cfg["patience"])
-    best_model_params = None
-
-    train_batches_per_epoch = len(train_dataset) / model_cfg["batch_size"]
-    val_batches_per_epoch = len(val_dataset) / model_cfg["batch_size"]
     writer = SummaryWriter(log_dir=local_storage_dir)
     logger.info(f"Starting training. View TensorBoard logs at dir: {local_storage_dir}")
 
@@ -140,27 +138,21 @@ def main(train_config: dict):
         classifier.train()
         for batch, (X, y) in enumerate(train_dataloader):
             X, y = X.to(device), y.to(device)
-            print(f"Shape of X: {X.shape} {X.dtype}")
-            print(f"Shape of y: {y.shape} {y.dtype}")
 
             pred = classifier(X)
             loss = loss_fn(pred, y)
 
-            train_loss += loss.item()
+            train_loss += loss.item() * X.size(0)
             train_correct += (y == pred.max(dim=1).indices).sum().item()
 
             loss.backward()
             optimizer.step_and_update_lr()
             optimizer.zero_grad()
 
-            if batch % 10:
-                loss, current = loss.item(), (batch + 1) * len(X)
-                print(f"loss: {loss:>7f}  [{current:>5d}/{len(train_dataset):>5d}]")
-
-        train_loss = train_loss / train_batches_per_epoch
-        train_acc  = train_correct / len(train_dataset)
+        train_loss = train_loss    / len(train_dataloader.dataset)
+        train_acc  = train_correct / len(train_dataloader.dataset)
         writer.add_scalar("Train Loss", train_loss , epoch)
-        writer.add_scalar("Train Acc", train_acc, epoch)
+        writer.add_scalar("Train Acc",  train_acc, epoch)
         
         # calculate validation loss
         val_loss = 0
@@ -173,35 +165,139 @@ def main(train_config: dict):
                 pred = classifier(X)
                 loss = loss_fn(pred, y)
 
-                val_loss += loss.item()
+                val_loss += loss.item() * X.size(0)
                 val_correct += (y == pred.max(dim=1).indices).sum().item()
 
-        val_loss = val_loss / val_batches_per_epoch
-        val_acc  = val_correct / len(val_dataset)
+        val_loss = val_loss    / len(val_dataloader.dataset)
+        val_acc  = val_correct / len(val_dataloader.dataset)
         writer.add_scalar("Val Loss", val_loss, epoch)
-        writer.add_scalar("Val Acc", val_acc , epoch)
+        writer.add_scalar("Val Acc",  val_acc , epoch)
 
-        logger.info(f"epoch #{epoch}: train_loss={train_loss}, train_acc={train_acc}, val_loss={val_loss}, val_acc={val_acc}")
+        logger.info(f"Epoch [{epoch}/{model_cfg['max_epochs']}], Patience [{early_stopper.counter}/{early_stopper.patience}] : "
+                    f"[train_loss={train_loss}], [train_acc={train_acc}], [val_loss={val_loss}], [val_acc={val_acc}]")
 
         if early_stopper.early_stop(val_loss):
             logger.info(f"Stopping training after {epoch} epochs, due to early stopping.")
             break
 
         if early_stopper.counter == 0:
-            best_model_params = deepcopy(classifier.state_dict())
+            logger.info(f"Saving model with lowest val loss so far to {local_storage_dir}model.pth")
+            torch.save(classifier.state_dict(), local_storage_dir + "model.pth")
 
     writer.flush()
-    logger.info(f"Saving model with lowest val loss to {local_storage_dir}model.pth")
-    torch.save(best_model_params, local_storage_dir + "model.pth")
+    writer.close()
 
-    # TODO: find best thresholds using ROC on val set
+    # find optimal thresholds using val set  
+    best_thresh, safe_thresh, risky_thresh = calc_optimal_threshold(val_dataloader, classifier, device, local_storage_dir + "val_ROC.pdf")
 
-    # TODO: create function which finds acc and F1 score on test set and plot ROC on test set
+    # plot ROC on test set and report results:
+    #    - classification report using best_thresh
+    #    - classification report using safe_thresh
+    #    - classification report using risky_thresh
+    calc_optimal_threshold(test_dataloader, classifier, device, local_storage_dir + "test_ROC.pdf")
 
+    ys                 = np.zeros( (len(test_dataloader.dataset), ) )
+    preds_best_thresh  = np.zeros( (len(test_dataloader.dataset), ) )
+    preds_safe_thresh  = np.zeros( (len(test_dataloader.dataset), ) )
+    preds_risky_thresh = np.zeros( (len(test_dataloader.dataset), ) )
+    idx = 0
+    classifier.eval()
+    with torch.no_grad():
+        for batch, (X, y) in enumerate(test_dataloader):
+            X, y = X.to(device), y.to(device)
 
+            logits = classifier(X)  # (batch_size, 2)
+            probs  = nn.functional.softmax(logits, dim=1) # (batch_size, 2)
+            probs  = probs[:, 1]  # (batch_size, )
 
+            batch_size = probs.size(dim=0)
+
+            ys[idx: idx + batch_size]                  = y.numpy(force=True)
+            preds_best_thresh[idx:  idx + batch_size]  = (probs > best_thresh).long().numpy(force=True)
+            preds_safe_thresh[idx:  idx + batch_size]  = (probs > safe_thresh).long().numpy(force=True)
+            preds_risky_thresh[idx: idx + batch_size]  = (probs > risky_thresh).long().numpy(force=True)
     
+            idx += batch_size
+    
+    assert idx == len(test_dataloader.dataset), f"Expected final idx to be {len(test_dataloader.dataset)} not {idx}"
+    
+    best_thresh_report  = classification_report(ys, preds_best_thresh,  target_names=["Don't Buy", "Buy"])
+    safe_thresh_report  = classification_report(ys, preds_safe_thresh,  target_names=["Don't Buy", "Buy"])
+    risky_thresh_report = classification_report(ys, preds_risky_thresh, target_names=["Don't Buy", "Buy"])
 
+    with open(local_storage_dir + "classification_report.txt") as f:
+        f.writelines([
+            f"best_thresh = {best_thresh}",
+            "best_thresh_report:", best_thresh_report,
+            f"safe_thresh = {safe_thresh}",
+            "safe_thresh_report:", safe_thresh_report,
+            f"risky_thresh = {risky_thresh}",
+            "risky_thresh_report", risky_thresh_report
+        ])
+
+    logger.info(f"Finished training and evaluation in {time.time() - start_time}s")
+    logger.info(f"Find related files in {local_storage_dir}")
+
+
+def calc_optimal_threshold(data_loader: DataLoader, classifier: nn.Module, 
+                           device: str, plot_fn: Optional[str]) -> Tuple[float, float]:
+    """ Calculate threshold which maximizes TPR - FPR
+
+    Args:
+        data_loader (DataLoader):  dataset used for calculating best threshold
+        classifier (nn.Module): torch model which has output (batch_size, 2) (binary classification)
+        device (str): device ("cpu" or "cuda")
+        plot_fn (Optional[str]): path to save ROC plot, if None won't plot.
+    Returns:
+        Tuple[float, float]: (optimal_thresh, safe_thresh, risky_thresh):
+            optimal_thresh maximizes TPR - FPR
+            safe_thresh maximizes 0.25 * TPR - 0.75 * FPR
+            risky_thresh maximizes 0.75 * TPR - 0.25 * FPR
+    """
+    ys        = np.zeros( (len(data_loader.dataset), ) )
+    all_probs = np.zeros( (len(data_loader.dataset), ) )
+    idx = 0
+    classifier.eval()
+    with torch.no_grad():
+        for batch, (X, y) in enumerate(data_loader):
+            X, y = X.to(device), y.to(device)
+
+            logits = classifier(X)  # (batch_size, 2)
+            probs  = nn.functional.softmax(logits, dim=1) # (batch_size, 2)
+            probs  = probs[:, 1]  # (batch_size, )
+
+            batch_size = probs.size(dim=0)
+
+            ys[idx: idx + batch_size]        = y.numpy(force=True)
+            all_probs[idx: idx + batch_size] = probs.numpy(force=True)
+
+            idx += batch_size
+
+    assert idx == len(data_loader.dataset), f"Expected final idx to be {len(data_loader.dataset)} not {idx}"
+
+    fpr, tpr, thresholds = roc_curve(ys, all_probs)
+
+    best_thresh_idx = np.argmax(tpr - fpr)
+    best_thresh = thresholds[best_thresh_idx]
+
+    safe_thresh_idx = np.argmax(0.25 * tpr - 0.75 * fpr)
+    safe_thresh = thresholds[safe_thresh_idx]
+
+    risky_thresh_idx = np.argmax(0.75 * tpr - 0.25 * fpr)
+    risky_thresh = thresholds[risky_thresh_idx]
+
+    if plot_fn is not None:
+        plt.plot([0,1], [0,1], linestyle='--', label='No Skill')
+        plt.plot(fpr, tpr, marker='.', label=type(classifier).__name__)
+        plt.scatter(fpr[best_thresh_idx], tpr[best_thresh_idx], marker='o', color='black', label=f'Best={round(best_thresh, 2)}')
+        plt.scatter(fpr[safe_thresh], tpr[safe_thresh], marker='o', color='green', label=f'Safe={round(safe_thresh, 2)}')
+        plt.scatter(fpr[risky_thresh], tpr[risky_thresh], marker='o', color='red', label=f'Risky={round(risky_thresh, 2)}')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.legend()
+        plt.savefig(plot_fn)
+
+    return best_thresh, safe_thresh, risky_thresh
 
 
 def set_up_logging(log_filename: str):
