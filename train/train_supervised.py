@@ -10,14 +10,14 @@ from dateutil.parser import parse
 
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from torch import nn
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
-from sklearn.metrics import roc_curve, classification_report
-from matplotlib.pyplot import plt
 
+from sklearn.metrics import roc_curve, classification_report
 from data_collection.historical_data import get_historical_data
 from data_preprocessing.asset_preprocessor import AssetPreprocessor
 from data_preprocessing.dataset import StocksDatasetInMem
