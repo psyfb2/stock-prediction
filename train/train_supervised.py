@@ -198,6 +198,7 @@ def main(train_config: dict):
 
     # find optimal thresholds using val set  
     best_thresh, safe_thresh, risky_thresh = calc_optimal_threshold(val_dataloader, classifier, device, local_storage_dir + "val_ROC.pdf")
+    logger.info(f"best_thresh = {best_thresh}, safe_thresh = {safe_thresh}, risky_thresh = {risky_thresh}")
 
     # plot ROC on test set and report results:
     #    - classification report using best_thresh
