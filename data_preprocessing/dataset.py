@@ -114,18 +114,18 @@ class StocksDatasetInMem(Dataset):
                 continue
 
             # the first candle after performing stacking should have be the first date after or including start_date
-            try:
-                start_date_idx = df[df["t"] >= start_date].index[0]
-            except IndexError as ex:
-                logger.exception(f"Not enough data, df has no rows after start_date '{start_date}'. "
-                                 f"Check data collection, will skip this ticker.")
-                continue
+            df_after_start_date = df[df["t"] >= start_date]
 
-            if start_date_idx - num_candles_to_stack + 1 < 0:
-                logger.warning(f"Not enough data. Check data collection, start_date_idx is {start_date_idx}. "
-                               f"but expected it to be atleast {num_candles_to_stack - 1}, will skip this ticker.")
+            if len(df_after_start_date) < num_candles_to_stack:
+                logger.exception(f"Not enough data, df has {len(df_after_start_date)} rows after start_date '{start_date}'. "
+                                 f"But need atleast {num_candles_to_stack}. Check data collection, will skip this ticker.")
                 continue
-
+    
+            start_date_idx = df_after_start_date.index[0]
+            if start_date_idx < num_candles_to_stack - 1:
+                logger.warning(f"Incomplete data. start_date_idx={start_date_idx} " 
+                               f"but it should be atleast {num_candles_to_stack - 1}. Check data collection.")
+                start_date_idx = num_candles_to_stack - 1
             df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
 
             df["labels"] = binary_label_tp_tsl(df, tp, tsl)
