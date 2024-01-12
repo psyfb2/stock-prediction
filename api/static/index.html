@@ -8,7 +8,6 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css"
     />
-    <script src="script.js"></script>
     <link type="text/css" rel="stylesheet" href="style.css" />
     <link rel="shortcut icon" href="favicon.ico" />
   </head>
@@ -32,12 +31,12 @@
     <div class="subheader clearfix">
       <div class="subheader-text">
         <p>
-          This tool will tell give you a bullish rating for a stock as a
-          percentage. A rating of 0% would be very bearish and 100% would be
-          very bullish. Concretely, the percentage represents the probability
-          that a Take-Profit of 6% is hit before a Trailing-Stop-Loss of 4% is
-          hit, relative to the current days open price. For more information
-          checkout the github README for this project
+          This tool will give you a bullish rating for a stock as a percentage.
+          A rating of 0% would be very bearish and 100% would be very bullish.
+          Concretely, the percentage represents the probability that a
+          Take-Profit of 6% is hit before a Trailing-Stop-Loss of 4% is hit,
+          relative to the current days open price. For more information checkout
+          the github README for this project
           <a href="https://github.com/psyfb2/stock-prediction">here</a>.
         </p>
 
@@ -71,8 +70,15 @@
           </button>
         </div>
       </div>
-
-      <div class="subheader-selection">Hi</div>
+    </div>
+    <div class="canvas-wrapper">
+      <canvas id="canvas" height="175" width="350" class="m-auto"> </canvas>
+      <p class="text">0 %</p>
+      <p class="action"></p>
+      <p class="sell_threshold"></p>
+      <p class="neutral_threshold"></p>
+      <p class="buy_threshold"></p>
     </div>
   </body>
+  <script src="script.js"></script>
 </html>
