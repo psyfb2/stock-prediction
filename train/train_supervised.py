@@ -110,7 +110,7 @@ def main(train_config: dict):
     # initialise model
     device = get_device()
     logger.info(f"Using device '{device}'")
-    
+
     in_features = train_dataset.features.shape[-1]
     classifier = ClassificationTransformer(
         seq_len=train_config["num_candles_to_stack"], in_features=in_features,
@@ -293,8 +293,8 @@ def calc_optimal_threshold(data_loader: DataLoader, classifier: nn.Module,
         plt.plot([0,1], [0,1], linestyle='--', label='No Skill')
         plt.plot(fpr, tpr, marker='.', label=type(classifier).__name__)
         plt.scatter(fpr[best_thresh_idx], tpr[best_thresh_idx], marker='o', color='black', label=f'Best={round(best_thresh, 2)}')
-        plt.scatter(fpr[safe_thresh], tpr[safe_thresh], marker='o', color='green', label=f'Safe={round(safe_thresh, 2)}')
-        plt.scatter(fpr[risky_thresh], tpr[risky_thresh], marker='o', color='red', label=f'Risky={round(risky_thresh, 2)}')
+        plt.scatter(fpr[safe_thresh_idx], tpr[safe_thresh_idx], marker='o', color='green', label=f'Safe={round(safe_thresh, 2)}')
+        plt.scatter(fpr[risky_thresh_idx], tpr[risky_thresh_idx], marker='o', color='red', label=f'Risky={round(risky_thresh, 2)}')
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
         plt.legend()
