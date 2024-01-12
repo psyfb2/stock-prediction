@@ -109,6 +109,8 @@ def main(train_config: dict):
 
     # initialise model
     device = get_device()
+    logger.info(f"Using device '{device}'")
+    
     in_features = train_dataset.features.shape[-1]
     classifier = ClassificationTransformer(
         seq_len=train_config["num_candles_to_stack"], in_features=in_features,
