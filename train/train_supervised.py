@@ -67,6 +67,10 @@ def main(train_config: dict):
 
     model_cfg = train_config["model_config"]
 
+    # TODO: REMOVE ME
+    model_cfg["max_epochs"] = 1
+    train_config["tickers"] = train_config["tickers"][:2]
+
     # load all data for tickers into file cache (this is only neccessary because of yfinance 2K requests rate limit per hour)
     # loading into file cache means 1 req per ticker instead of 3 (train, val, test)
     preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
@@ -133,7 +137,9 @@ def main(train_config: dict):
     # train model using earling stopping
     early_stopper = EarlyStopper(patience=model_cfg["patience"])
     writer = SummaryWriter(log_dir=local_storage_dir)
-    logger.info(f"Starting training. View TensorBoard logs at dir: {local_storage_dir}")
+    logger.info(f"Starting training, train dataset length = {len(train_dataloader.dataset)}.")
+    logger.info(f"View TensorBoard logs at dir: {local_storage_dir})
+
 
     for epoch in range(model_cfg["max_epochs"]):
         train_loss = 0
@@ -228,7 +234,7 @@ def main(train_config: dict):
     safe_thresh_report  = classification_report(ys, preds_safe_thresh,  target_names=["Don't Buy", "Buy"])
     risky_thresh_report = classification_report(ys, preds_risky_thresh, target_names=["Don't Buy", "Buy"])
 
-    with open(local_storage_dir + "classification_report.txt") as f:
+    with open(local_storage_dir + "classification_report.txt", mode="w") as f:
         f.writelines([
             f"best_thresh = {best_thresh}",
             "best_thresh_report:", best_thresh_report,
