@@ -78,6 +78,7 @@ def main(train_config: dict):
                             candle_size=train_config["candle_size"])
     
     # load preprocessed datasets (train, val, test)
+    logger.info("Loading training data")
     train_dataset = StocksDatasetInMem(
         tickers=train_config["tickers"], start_date=train_config["train_start_date"], 
         end_date=train_config["val_start_date"], tp=train_config["tp"], tsl=train_config["tsl"],
@@ -89,6 +90,7 @@ def main(train_config: dict):
     with open(local_storage_dir + "normalisation_info.json", "w") as fp:
         json.dump({"means": means, "stds": stds}, fp)
 
+    logger.info("Loading validation data")
     val_dataset = StocksDatasetInMem(
         tickers=train_config["tickers"], start_date=train_config["val_start_date"], 
         end_date=train_config["test_start_date"], tp=train_config["tp"], tsl=train_config["tsl"],
@@ -96,6 +98,7 @@ def main(train_config: dict):
         means=means, stds=stds, candle_size=train_config["candle_size"]
     )
 
+    logger.info("Loading test data")
     test_dataset = StocksDatasetInMem(
         tickers=train_config["tickers"], start_date=train_config["test_start_date"], 
         end_date=train_config["test_end_date"], tp=train_config["tp"], tsl=train_config["tsl"],
@@ -137,7 +140,7 @@ def main(train_config: dict):
     logger.info(f"View TensorBoard logs at dir: {local_storage_dir}")
 
 
-    for epoch in range(model_cfg["max_epochs"]):
+    for epoch in range(1, model_cfg["max_epochs"] + 1):
         train_loss = 0
         train_correct = 0
         classifier.train()

@@ -113,20 +113,20 @@ class StocksDatasetInMem(Dataset):
                 logger.exception(f"Got exception while preprocessing df, will skip this ticker.")
                 continue
 
-            # the first candle after performing stacking should have be the first date after or including start_date
+            # the first candle after performing stacking should have the first date after or including start_date
             df_after_start_date = df[df["t"] >= start_date]
 
-            if len(df_after_start_date) < num_candles_to_stack:
-                logger.exception(f"Not enough data, df has {len(df_after_start_date)} rows after start_date '{start_date}'. "
-                                 f"But need atleast {num_candles_to_stack}. Check data collection, will skip this ticker.")
+            if len(df_after_start_date) == 0:
+                logger.warning(f"Not enough data, df has 0 rows after start_date '{start_date}', will skip this ticker")
                 continue
-    
+
             start_date_idx = df_after_start_date.index[0]
-            if start_date_idx < num_candles_to_stack - 1:
-                logger.warning(f"Incomplete data. start_date_idx={start_date_idx} " 
-                               f"but it should be atleast {num_candles_to_stack - 1}. Check data collection.")
-                start_date_idx = num_candles_to_stack - 1
-            df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
+            if start_date_idx >= num_candles_to_stack - 1:
+                # cut left part of df which goes before start_date even after stacking
+                df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
+            else:
+                logger.warning(f"Data is not complete. start_date_idx={start_date_idx}, "
+                               f"but it should be atleast {num_candles_to_stack - 1}. Check data-collection.")
 
             df["labels"] = binary_label_tp_tsl(df, tp, tsl)
             logger.info(f"label counts:\n{df['labels'].value_counts(normalize=True)}")
