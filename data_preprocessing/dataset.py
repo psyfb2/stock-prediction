@@ -47,7 +47,7 @@ class StocksDatasetInMem(Dataset):
 
         self.features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy(dtype=np.float32)  # (N, D)
         self.labels   = data_df["labels"].to_numpy(dtype=np.int64)  # (N, )
-        self.lengths = lengths
+        self.lengths  = np.array(lengths)  # (len(tickers), )
         self.num_candles_to_stack = num_candles_to_stack
         self.means = means
         self.stds = stds
@@ -164,9 +164,16 @@ class StocksDatasetInMem(Dataset):
         # normalise data
         if not means or not stds:
             means = data_df.mean(numeric_only=True)
+            logger.info(f"Calulated means:\n{means}")
+
             stds  = data_df.std(numeric_only=True)
+            logger.info(f"Calulated stds:\n{stds}")
+            
         preprocessor.normalise_df(data_df, means, stds)
 
         assert len(data_df) == sum(lengths), f"length of data_df is {len(data_df)}, but expected it to be {sum(lengths)}"
+
+        num_nans = data_df.isna().sum().sum()
+        assert num_nans == 0, f"Expected Number of NaNs in finalised data_df to be 0, but was {num_nans}"
 
         return data_df, lengths, dict(means), dict(stds)

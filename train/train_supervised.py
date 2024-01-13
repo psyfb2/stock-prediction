@@ -27,27 +27,6 @@ from utils.scheduled_optim import ScheduledOptim
 from utils.early_stopping import EarlyStopper
 
 
-"""
-TODO: classification:
-        classify:
-            - labels {0 = sell, 1 = buy}:
-                - 1 if TP is hit before trailing SL
-                - 0 otherwise
-        use stacking of T candles, so X shape is (N, T, D) and labels have shape (N, 1)
-        use daily candles going back to 2014, with standardised TI's + candle_stick patterns 
-        
-        Train using encoder only transformer using data from 100+ stocks using data going.
-
-        ROC Curve to find threshold which maximizes TPR - FPR
-        
-        
-        example strategy:
-            - if p > j_threshold:
-                - buy with 20% of original cash amount allocated for this stock
-                  with TP and (trailing) SL used during labelling
-            - otherwise:
-                - sell all shares
-"""
 logger = logging.getLogger(__name__)
 
 
@@ -106,6 +85,11 @@ def main(train_config: dict):
         means=means, stds=stds, candle_size=train_config["candle_size"]
     )
 
+    np.savez(local_storage_dir + "datasets.npz", 
+             train_X=train_dataset.X, train_y=train_dataset.y, train_lengths=train_dataset.lengths,
+             val_X=val_dataset.X,     val_y=val_dataset.y,     val_lengths=val_dataset.lengths,
+             test_X=test_dataset.X,   test_y=test_dataset.y,   test_lengths=test_dataset.lengths)
+
     train_dataloader = DataLoader(train_dataset, batch_size=model_cfg["batch_size"], shuffle=True)
     val_dataloader   = DataLoader(val_dataset,   batch_size=model_cfg["batch_size"])
     test_dataloader  = DataLoader(test_dataset,  batch_size=model_cfg["batch_size"])
@@ -139,10 +123,8 @@ def main(train_config: dict):
     logger.info(f"Starting training, train dataset length = {len(train_dataloader.dataset)}.")
     logger.info(f"View TensorBoard logs at dir: {local_storage_dir}")
 
-
     for epoch in range(1, model_cfg["max_epochs"] + 1):
-        train_loss = 0
-        train_correct = 0
+        train_loss = train_correct = 0
         classifier.train()
         for batch, (X, y) in enumerate(train_dataloader):
             X, y = X.to(device), y.to(device)
@@ -150,21 +132,25 @@ def main(train_config: dict):
             pred = classifier(X)
             loss = loss_fn(pred, y)
 
-            train_loss += loss.item() * X.size(0)
-            train_correct += (y == pred.max(dim=1).indices).sum().item()
+            if torch.isnan(loss).item():
+                logger.warning(f"Got NaN loss {loss}, skipping this Train batch!")
+                continue
+
+            train_loss    += loss.item()
+            train_correct += (pred.argmax(1) == y).type(torch.float).sum().item()
 
             loss.backward()
+            nn.utils.clip_grad_norm_(classifier.parameters(), model_cfg["grad_clip"])
             optimizer.step_and_update_lr()
             optimizer.zero_grad()
 
-        train_loss = train_loss    / len(train_dataloader.dataset)
-        train_acc  = train_correct / len(train_dataloader.dataset)
+        train_loss /= len(train_dataloader)
+        train_acc  /= len(train_dataloader.dataset)
         writer.add_scalar("Train Loss", train_loss , epoch)
         writer.add_scalar("Train Acc",  train_acc, epoch)
         
         # calculate validation loss
-        val_loss = 0
-        val_correct = 0
+        val_loss = val_correct = 0
         classifier.eval()
         with torch.no_grad():
             for batch, (X, y) in enumerate(val_dataloader):
@@ -173,11 +159,15 @@ def main(train_config: dict):
                 pred = classifier(X)
                 loss = loss_fn(pred, y)
 
-                val_loss += loss.item() * X.size(0)
-                val_correct += (y == pred.max(dim=1).indices).sum().item()
+                if torch.isnan(loss).item():
+                    logger.warning(f"Got NaN loss {loss}, skipping this Validation batch!")
+                    continue
 
-        val_loss = val_loss    / len(val_dataloader.dataset)
-        val_acc  = val_correct / len(val_dataloader.dataset)
+                val_loss    += loss.item()
+                val_correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+
+        val_loss /= len(val_dataloader)
+        val_acc  /= len(val_dataloader.dataset)
         writer.add_scalar("Val Loss", val_loss, epoch)
         writer.add_scalar("Val Acc",  val_acc , epoch)
 

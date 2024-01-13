@@ -12,8 +12,8 @@ document.querySelector(".buy_threshold").innerText =
   "Buy Threshold = " + buy_threshold.toString();
 
 //Change this Value to set the percentage
-let totalRot = ((90 / 100) * 180 * Math.PI) / 180;
-
+let totalRot = ((80 / 100) * 180 * Math.PI) / 180;
+let animationID = null;
 let rotation = 0;
 let doAnim = true;
 let canvas = null;
@@ -22,7 +22,19 @@ let text = document.querySelector(".text");
 let actionText = document.querySelector(".action");
 canvas = document.getElementById("canvas");
 ctx = canvas.getContext("2d");
-setTimeout(requestAnimationFrame(animate), 1500);
+
+document.getElementById("ticker_button").addEventListener(
+  "click",
+  function () {
+    console.log("CALLED");
+    if (animationID != null) {
+      cancelAnimationFrame(animationID);
+    }
+    animationID = requestAnimationFrame(animate);
+    setTimeout(animationID, 1500);
+  },
+  false
+);
 
 function calcPointsCirc(cx, cy, rad, dashLength) {
   var n = rad / dashLength,
@@ -167,5 +179,5 @@ function animate() {
   }
 
   text.innerHTML = Math.round((rotation / Math.PI) * 100) + 0 + "%";
-  requestAnimationFrame(animate);
+  animationID = requestAnimationFrame(animate);
 }

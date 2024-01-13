@@ -98,10 +98,16 @@ if __name__ == "__main__":
     # test transformer with dummy input
     batch, seq_len, features = 64, 128, 32
     num_classes = 2
-    x = torch.rand((batch, seq_len, features))
 
     transformer = ClassificationTransformer(seq_len, features, num_classes)
     summary(transformer, input_size=(batch, seq_len, features))
 
-    y = transformer(x)
-    assert y.size() == torch.Size([batch, num_classes])
+    X = torch.rand((batch, seq_len, features))
+    y = torch.randint(0, 2, (batch, )).long()
+    loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
+
+    pred = transformer(X)
+    assert pred.size() == torch.Size([batch, num_classes])
+
+    loss = loss_fn(pred, y)
+    print("loss:", loss, loss.item())

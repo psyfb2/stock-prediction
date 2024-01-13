@@ -8,7 +8,7 @@ from data_preprocessing.index_mapper import IndexMapper
 class TestDataCollection(unittest.TestCase):
     def test_index_mapper(self):
         window_size = 3
-        lengths = [5, 4, 6]
+        lengths = np.array([5, 4, 6])
 
         correct_mapping = {
             0: 2,
