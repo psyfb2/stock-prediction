@@ -149,6 +149,9 @@ class StocksDatasetInMem(Dataset):
         data_df = pd.concat(all_dfs, ignore_index=True)
         logger.info(f"all data label counts:\n{data_df['labels'].value_counts(normalize=True)}")
 
+        num_nans = data_df.isna().sum().sum()
+        assert num_nans == 0, f"Expected Number of NaNs prior to loading VIX to be 0, but was {num_nans}"
+
         # add VIX data as broad market sentiment indicators
         vix_preprocessor = VixPreprocessor()
 
@@ -160,14 +163,22 @@ class StocksDatasetInMem(Dataset):
         unmerged_data_df = data_df
         data_df = data_df.merge(vix_df, on="t", how="left")
         assert all(unmerged_data_df["t"] == data_df["t"]), f"Merging has not preserved order of rows!"
+
+        num_nans = data_df.isna().sum().sum()
+        assert num_nans == 0, f"Expected Number of NaNs prior to normalisation to be 0, but was {num_nans}"
         
         # normalise data
         if not means or not stds:
             means = data_df.mean(numeric_only=True)
-            logger.info(f"Calulated means:\n{means}")
+            logger.info(f"Calulated means:\n{dict(means)}")
 
             stds  = data_df.std(numeric_only=True)
-            logger.info(f"Calulated stds:\n{stds}")
+            logger.info(f"Calulated stds:\n{dict(stds)}")
+
+            cols_with_std_0 = stds[stds == 0]
+            if len(cols_with_std_0) > 0:
+                logger.warning(f"The following columns have 0 std:\n{cols_with_std_0}")
+                logger.warning(f"Corrosponding df columns:\n{data_df[[col for col in cols_with_std_0.index]]}")
             
         preprocessor.normalise_df(data_df, means, stds)
 
