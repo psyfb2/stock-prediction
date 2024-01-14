@@ -31,9 +31,9 @@ class BasePreprocessor(ABC):
         # get minimum number of rows required to preprocess a df
         date = parse("2008-01-01")
         if candle_size == "1h":
-            dummy_df = pd.DataFrame([{'t': date + timedelta(hours=i), 'o': i, 'c': i, 'h': i, 'l': i, "v": i} for i in range(3000)])
+            dummy_df = pd.DataFrame([{'t': date + timedelta(hours=i), 'o': i, 'c': i, 'h': i, 'l': i, "v": i} for i in range(1, 3000)])
         else:
-            dummy_df = pd.DataFrame([{'t': date + timedelta(days=i), 'o': i, 'c': i, 'h': i, 'l': i, "v": i} for i in range(3000)])
+            dummy_df = pd.DataFrame([{'t': date + timedelta(days=i), 'o': i, 'c': i, 'h': i, 'l': i, "v": i} for i in range(1, 3000)])
         original_len = len(dummy_df.index)
         dummy_df = self.calc_features(dummy_df).dropna().reset_index(drop=True)
         self.min_rows_required = original_len - len(dummy_df.index)
