@@ -124,6 +124,13 @@ input::placeholder {
   text-align: center;
 }
 
+.error_text {
+  color: red;
+  font-weight: 200;
+  font-size: 14px;
+  text-align: center;
+}
+
 .action {
   color: white;
   font-weight: 600;
@@ -133,6 +140,7 @@ input::placeholder {
 
 .buy_threshold,
 .sell_threshold,
+.strong_buy_threshold,
 .neutral_threshold {
   color: white;
   font-weight: 200;
