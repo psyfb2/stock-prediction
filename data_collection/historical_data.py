@@ -1,6 +1,7 @@
 import os
 import logging
 import requests
+import json
 from datetime import datetime, timedelta
 from typing import List
 
@@ -146,13 +147,13 @@ def get_historical_data(symbol: str, start_date: str, end_date: str,
 
     try:
         validate_historical_data(df, start_date_str, end_date_str, 
-                                candle_size, outside_rth, 
-                                yf.Ticker(symbol).info["exchange"] if not exchange else exchange)
+                                 candle_size, outside_rth, exchange if exchange else get_exchange(symbol))
     except AssertionError as ex:
         if raise_invalid_data_exception:
             raise ex
         logger.warning(f"Invalid data for ticker '{symbol}', with start_date='{start_date}', "
                        f"end_date='{end_date}', candle_size='{candle_size}'\n{ex}")
+
     return df
 
 
@@ -174,6 +175,17 @@ def _get_historical_data(symbol: str, start_date: str, end_date: str,
     logger.info(f"Making yfinance request with start='{start_date}', end='{end_date}', "
                 f"prepost={outside_rth}, interval='{candle_size}' for ticker '{symbol}'")
     
+    yf_exchange_map = {
+        "LSE": "L",
+        "ASX": "AX",
+        "TSX": "TO",
+        "ETR": "DE"
+    }
+    
+    if exchange in yf_exchange_map and '.' not in ticker:
+        # convert to yfinance ticker format 
+        ticker = f"{ticker}.{yf_exchange_map[exchange]}"
+
     ticker = yf.Ticker(symbol)
     df = ticker.history(start=start_date, end=end_date, prepost=outside_rth, interval=candle_size).reset_index()
     df = df.rename(columns={"Date": "t", "Open": "o", "Close": "c", "Low": "l", "High": "h", "Volume": "v"})
@@ -189,6 +201,31 @@ def _get_historical_data(symbol: str, start_date: str, end_date: str,
     return df[["t", "o", "c", "h", "l", "v"]]
 
 
+def get_exchange(symbol: str) -> str:
+    """ Get main exchange for symbol
+
+    Args:
+        symbol (str): ticker symbol
+
+    Returns:
+        str: main exchange (e.g. "NYSE") for symbol
+    """
+    correct_exchange_map = {
+        "NYQ": "NYSE",
+        "NGM": "NASDAQ",
+        "NMS": "NASDAQ",
+        "BTS": "BATS",
+        "TOR": "TSX",
+        "AX":  "ASX",
+        "DE":  "ETR"
+    }
+
+    logger.info(f"Making request to yfinance to get exchange for ticker '{symbol}'")
+    exchange = yf.Ticker(symbol).info["exchange"]
+
+    return correct_exchange_map.get(exchange, exchange)
+
+
 def validate_historical_data(df: pd.DataFrame, start_date: str, end_date: str, candle_size: str, 
                              outside_rth: bool, market_calander_name="NASDAQ"):
     """ Raise assertion error if data coming from df is not valid 
@@ -201,15 +238,12 @@ def validate_historical_data(df: pd.DataFrame, start_date: str, end_date: str, c
         candle_size (str): requested candle size
         outside_rth (bool): request for outside regular trading hours data?
         market_calander_name (str): the name of the exchange. e.g. "NYSE".
-    """    
-    if market_calander_name.upper() in ("NYQ", "NMS"):
-        market_calander_name = "NYSE"
-
+    """
     if candle_size == "1d":
         try:
             exchange = mcal.get_calendar(market_calander_name)
         except RuntimeError as ex:
-            logger.warning(f"exchange {market_calander_name} not recognised, cannot validate data. Exact exception:\n{ex}")
+            logger.warning(f"exchange '{market_calander_name}' not recognised, cannot validate data. Exact exception:\n{ex}")
             return
 
         inclusive_end_date = (parse(end_date) - timedelta(days=1)).strftime("%Y-%m-%d")

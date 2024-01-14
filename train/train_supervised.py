@@ -52,9 +52,9 @@ def main(train_config: dict):
     adjusted_start_date = preprocessor.adjust_start_date(
         parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
     ).strftime("%Y-%m-%d")
-    for ticker in train_config["tickers"]:
+    for ticker, exchange in train_config["tickers"]:
         get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=train_config["test_end_date"],
-                            candle_size=train_config["candle_size"])
+                            candle_size=train_config["candle_size"], exchange=exchange)
 
     # load preprocessed datasets (train, val, test)
     logger.info("Loading training data")

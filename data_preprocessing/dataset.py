@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from dateutil.parser import parse
 from datetime import timedelta
 from multiprocessing import Pool
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 #       which is useful when the dataset is so huge it cannot fit in memory
 
 class StocksDatasetInMem(Dataset):
-    def __init__(self, tickers: List[str], start_date: str, end_date: str, 
+    def __init__(self, tickers: List[List[str]], start_date: str, end_date: str, 
                  tp: float, tsl: float, num_candles_to_stack: int, 
                  means: Optional[Dict[str, float]] = None, stds: Optional[Dict[str, float]] = None,
                  candle_size: str ="1d", procs: Optional[int] = None):
@@ -29,7 +29,7 @@ class StocksDatasetInMem(Dataset):
         (i.e. convert sample shape from (D, ) to (T, D) whenever getting the next data-point.
 
         Args:
-            tickers (List[str]): ticker symbols to be included in the dataset
+            tickers (List[List[str]]): [[ticker, exchange], ...] for tickers to be included in the dataset
             start_date (str): start date for data in yyyy-mm-dd format
             end_date (str): end date for data in yyyy-mm-dd format (exclusive)
             tp (float): take profit value used for labelling (e.g. 0.05 for 5% take profit)
@@ -71,7 +71,7 @@ class StocksDatasetInMem(Dataset):
         return len(self.idx_mapper)
 
     @classmethod
-    def load_dataset_in_mem(cls, tickers: List[str], start_date: str, end_date: str, 
+    def load_dataset_in_mem(cls, tickers: List[List[str]], start_date: str, end_date: str, 
                             tp: float, tsl: float, num_candles_to_stack: int, 
                             means: Optional[Dict[str, float]] = None, 
                             stds: Optional[Dict[str, float]] = None,
@@ -81,7 +81,7 @@ class StocksDatasetInMem(Dataset):
         be done at inference time to save memory.
 
         Args:
-            tickers (List[str]): ticker symbols to be included in the dataset
+            tickers (List[List[str]]): [[ticker, exchange], ...] for tickers to be included in the dataset
             start_date (str): start date for data in yyyy-mm-dd format
             end_date (str): end date for data in yyyy-mm-dd format (exclusive)
             tp (float): take profit value used for labelling (e.g. 0.05 for 5% take profit)
@@ -107,9 +107,9 @@ class StocksDatasetInMem(Dataset):
         preprocessor = AssetPreprocessor(candle_size=candle_size)
 
         with Pool(procs) as p:
-            results = p.starmap(cls._preprocess_ticker, ((ticker, start_date, end_date, preprocessor,
+            results = p.starmap(cls._preprocess_ticker, ((ticker, exchange, start_date, end_date, preprocessor,
                                                          num_candles_to_stack, tp, tsl, candle_size) 
-                                                        for ticker in tickers))
+                                                        for ticker, exchange in tickers))
             
         all_dfs = []
         lengths = []
@@ -172,13 +172,15 @@ class StocksDatasetInMem(Dataset):
         return data_df, lengths, dict(means), dict(stds)
     
     @staticmethod
-    def preprocess_ticker(ticker: str, start_date: str, end_date: str, preprocessor: AssetPreprocessor,
-                          num_candles_to_stack: int, tp: Optional[float] = None, 
-                          tsl: Optional[float] = None, candle_size="1d") -> pd.DataFrame:
+    def preprocess_ticker(ticker: str, exchange: str, start_date: str, end_date: str, 
+                          preprocessor: AssetPreprocessor, num_candles_to_stack: int, 
+                          tp: Optional[float] = None, tsl: Optional[float] = None, candle_size="1d"
+                          ) -> pd.DataFrame:
         """ Load preprocessed data for a ticker.
 
         Args:
             ticker (str): ticker symbol to preprocess
+            exchange (str): exchange for ticker. If empty string will use main exchange.
             start_date (str): start date for data in yyyy-mm-dd format
             end_date (str): end date for data in yyyy-mm-dd format (exclusive)
             preprocessor (AssetPreprocessor): preprocessor to use
@@ -197,7 +199,7 @@ class StocksDatasetInMem(Dataset):
         ).strftime("%Y-%m-%d")
 
         df = get_historical_data(symbol=ticker, start_date=adjusted_start_date, 
-                                 end_date=end_date, candle_size=candle_size)
+                                 end_date=end_date, candle_size=candle_size, exchange=exchange)
 
         df = preprocessor.preprocess_ochl_df(df)
 
@@ -234,10 +236,12 @@ class StocksDatasetInMem(Dataset):
         return df
 
     @classmethod
-    def _preprocess_ticker(cls, ticker: str, start_date: str, end_date: str, preprocessor: AssetPreprocessor,
+    def _preprocess_ticker(cls, ticker: str, exchange: str, start_date: str, 
+                           end_date: str, preprocessor: AssetPreprocessor,
                            num_candles_to_stack: int, tp: Optional[float] = None, 
-                           tsl: Optional[float] = None, candle_size="1d") -> Optional[pd.DataFrame]:
+                           tsl: Optional[float] = None, candle_size="1d") -> Union[pd.DataFrame, str]:
         try:
-            return cls.preprocess_ticker(ticker, start_date, end_date, preprocessor, num_candles_to_stack, tp, tsl, candle_size)
+            return cls.preprocess_ticker(ticker, exchange, start_date, end_date, preprocessor, 
+                                         num_candles_to_stack, tp, tsl, candle_size)
         except ValueError as ex:
             return f"Error while preprocessing ticker '{ticker}': {ex}"
