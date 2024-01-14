@@ -226,11 +226,11 @@ def main(train_config: dict):
 
     with open(local_storage_dir + "classification_report.txt", mode="w") as f:
         f.writelines([
-            f"best_thresh = {best_thresh}",
+            f"best_thresh = {best_thresh}\n",
             "best_thresh_report:", best_thresh_report,
-            f"safe_thresh = {safe_thresh}",
+            f"\nsafe_thresh = {safe_thresh}\n",
             "safe_thresh_report:", safe_thresh_report,
-            f"risky_thresh = {risky_thresh}",
+            f"\nrisky_thresh = {risky_thresh}\n",
             "risky_thresh_report", risky_thresh_report
         ])
 
