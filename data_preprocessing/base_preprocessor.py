@@ -84,7 +84,7 @@ class BasePreprocessor(ABC):
     
     def normalise_df(self, df: pd.DataFrame, means: Dict[str, float], stds: Dict[str, float]):
         """ Normalise dataframe in-place. If a column is bounded will use min-max scaling otherwise will
-        use standardisation. Also ["t", "o", "c", "h", "l", "v"] columns are left unchanged.
+        use standardisation. Also ["t", "o", "c", "h", "l", "v", "labels"] columns are left unchanged.
 
         Args:
             df (pd.DataFrame): preprocessed df. Contains un-normalised features from preprocess_df method.
@@ -94,10 +94,7 @@ class BasePreprocessor(ABC):
         """
         for col in df.columns:
             # original columns should be unchanged (unnormalised)
-            if col in ["t", "o", "c", "h", "l", "v"]: continue
-
-            # TODO REMOVE ME:
-            self._logger.info(f"before normalisation df['{col}']:\n{df[col]}")
+            if col in ["t", "o", "c", "h", "l", "v", "labels"]: continue
 
             if col in self.bounded_cols:
                 # perform min-max scaling to put in range [-1, 1]
@@ -108,9 +105,6 @@ class BasePreprocessor(ABC):
                 if stds[col] == 0:
                     raise ValueError(f"stds for col '{col}' must not be 0. df['{col}']:\n{df[col]}")
                 df[col] = (df[col] - means[col]) / stds[col]
-            
-            # TODO: REMOVE ME
-            self._logger.info(f"after normalisation df['{col}'] (means={means[col]}, stds={stds[col]}):\n{df[col]}")
     
     def adjust_start_date(self, start_date: datetime, num_candles_to_stack: int) -> datetime:
         """ some data at the start is NaN due to preprocessing (e.g. when calculating moving average)

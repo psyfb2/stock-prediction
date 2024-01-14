@@ -124,7 +124,7 @@ class StocksDatasetInMem(Dataset):
         logger.info(f"all data label counts:\n{data_df['labels'].value_counts(normalize=True)}")
 
         num_nans = data_df.isna().sum().sum()
-        assert num_nans == 0, f"Expected Number of NaNs prior to loading VIX to be 0, but was {num_nans}. NaNs per col: {data_df.isna().sum()}"
+        assert num_nans == 0, f"Expected Number of NaNs prior to loading VIX to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
 
         # add VIX data as broad market sentiment indicators
         vix_preprocessor = VixPreprocessor()
@@ -152,7 +152,7 @@ class StocksDatasetInMem(Dataset):
         assert all(unmerged_data_df["t"] == data_df["t"]), f"Merging has not preserved order of rows!"
 
         num_nans = data_df.isna().sum().sum()
-        assert num_nans == 0, f"Expected Number of NaNs prior to normalisation to be 0, but was {num_nans}. NaNs per col: {data_df.isna().sum()}"
+        assert num_nans == 0, f"Expected Number of NaNs prior to normalisation to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
         
         # normalise data
         if not means or not stds:
@@ -165,9 +165,10 @@ class StocksDatasetInMem(Dataset):
         preprocessor.normalise_df(data_df, means, stds)
 
         assert len(data_df) == sum(lengths), f"length of data_df is {len(data_df)}, but expected it to be {sum(lengths)}"
+        assert ( (data_df["labels"] == 0.0) | (data_df["labels"] == 1.0) ).all()
 
         num_nans = data_df.isna().sum().sum()
-        assert num_nans == 0, f"Expected Number of NaNs in finalised data_df to be 0, but was {num_nans}. NaNs per col: {data_df.isna().sum()}"
+        assert num_nans == 0, f"Expected Number of NaNs in finalised data_df to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
 
         return data_df, lengths, dict(means), dict(stds)
     

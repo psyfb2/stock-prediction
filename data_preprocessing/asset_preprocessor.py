@@ -59,6 +59,13 @@ class AssetPreprocessor(BasePreprocessor):
 
         df = df.copy()
         
+        # sometimes volume could be 0 (this is very rare, but would create NaN elements when calculating means and stds)
+        # so remove all rows which contain a 0
+        zeros = (df[price_cols] == 0).any(axis=1)
+        if zeros.any():
+            self._logger.warning(f"The following rows have a zero! They will be dropped:\n{df[zeros]}")
+            df = df[~zeros]
+        
         # ------ apply TI's ------ #
         df['rsi'] = ta.rsi(close=df['c'], length=14)
 
