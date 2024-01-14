@@ -86,9 +86,9 @@ def main(train_config: dict):
     )
 
     np.savez(local_storage_dir + "datasets.npz", 
-             train_X=train_dataset.X, train_y=train_dataset.y, train_lengths=train_dataset.lengths,
-             val_X=val_dataset.X,     val_y=val_dataset.y,     val_lengths=val_dataset.lengths,
-             test_X=test_dataset.X,   test_y=test_dataset.y,   test_lengths=test_dataset.lengths)
+             train_X=train_dataset.features, train_y=train_dataset.labels, train_lengths=train_dataset.lengths,
+             val_X=val_dataset.features,     val_y=val_dataset.labels,     val_lengths=val_dataset.lengths,
+             test_X=test_dataset.features,   test_y=test_dataset.labels,   test_lengths=test_dataset.lengths)
 
     train_dataloader = DataLoader(train_dataset, batch_size=model_cfg["batch_size"], shuffle=True)
     val_dataloader   = DataLoader(val_dataset,   batch_size=model_cfg["batch_size"])
@@ -144,10 +144,10 @@ def main(train_config: dict):
             optimizer.step_and_update_lr()
             optimizer.zero_grad()
 
-        train_loss /= len(train_dataloader)
-        train_acc  /= len(train_dataloader.dataset)
+        train_loss     /= len(train_dataloader)
+        train_correct  /= len(train_dataloader.dataset)
         writer.add_scalar("Train Loss", train_loss , epoch)
-        writer.add_scalar("Train Acc",  train_acc, epoch)
+        writer.add_scalar("Train Acc",  train_correct, epoch)
         
         # calculate validation loss
         val_loss = val_correct = 0
@@ -166,13 +166,13 @@ def main(train_config: dict):
                 val_loss    += loss.item()
                 val_correct += (pred.argmax(1) == y).type(torch.float).sum().item()
 
-        val_loss /= len(val_dataloader)
-        val_acc  /= len(val_dataloader.dataset)
+        val_loss     /= len(val_dataloader)
+        val_correct  /= len(val_dataloader.dataset)
         writer.add_scalar("Val Loss", val_loss, epoch)
-        writer.add_scalar("Val Acc",  val_acc , epoch)
+        writer.add_scalar("Val Acc",  val_correct , epoch)
 
         logger.info(f"Epoch [{epoch}/{model_cfg['max_epochs']}], Patience [{early_stopper.counter}/{early_stopper.patience}] : "
-                    f"[train_loss={train_loss}], [train_acc={train_acc}], [val_loss={val_loss}], [val_acc={val_acc}]")
+                    f"[train_loss={train_loss}], [train_acc={train_correct}], [val_loss={val_loss}], [val_acc={val_correct}]")
 
         if early_stopper.early_stop(val_loss):
             logger.info(f"Stopping training after {epoch} epochs, due to early stopping.")
@@ -286,6 +286,7 @@ def calc_optimal_threshold(data_loader: DataLoader, classifier: nn.Module,
     risky_thresh = thresholds[risky_thresh_idx]
 
     if plot_fn is not None:
+        plt.clf()
         plt.plot([0,1], [0,1], linestyle='--', label='No Skill')
         plt.plot(fpr, tpr, marker='.', label=type(classifier).__name__)
         plt.scatter(fpr[best_thresh_idx], tpr[best_thresh_idx], marker='o', color='black', label=f'Best={round(best_thresh, 2)}')

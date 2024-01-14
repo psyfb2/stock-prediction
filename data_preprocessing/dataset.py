@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict, Tuple, Optional
 from dateutil.parser import parse
+from datetime import timedelta
 
 import pandas as pd
 import numpy as np
@@ -11,6 +12,7 @@ from data_preprocessing.asset_preprocessor import AssetPreprocessor
 from data_preprocessing.vix_preprocessor import VixPreprocessor
 from data_preprocessing.labelling import binary_label_tp_tsl
 from data_preprocessing.index_mapper import IndexMapper
+from utils.date_range import daterange
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +161,19 @@ class StocksDatasetInMem(Dataset):
         vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h"])
         vix_df = vix_df.rename(columns={col : f"vix_{col}" for col in vix_df.columns if col != 't'})
         preprocessor.bounded_cols.update({f"vix_{k}": v for k, v in vix_preprocessor.bounded_cols.items()})
+
+        # fill VIX df (might be missing some days, just fill with previous value)
+        last_idx = 0
+        vix_df_filled = pd.DataFrame(columns=list(vix_df.columns))
+        for date in daterange(vix_df["t"].iloc[0], vix_df["t"].iloc[-1] + timedelta(days=1)):
+            if date == vix_df["t"].iloc[last_idx]:
+                vix_df_filled = pd.concat([vix_df_filled, vix_df.iloc[last_idx:last_idx + 1]], ignore_index=True)
+                last_idx += 1
+            else:
+                row = vix_df.iloc[last_idx - 1:last_idx].copy()
+                row["t"] = date
+                vix_df_filled = pd.concat([vix_df_filled, row], ignore_index=True)
+        vix_df = vix_df_filled
 
         unmerged_data_df = data_df
         data_df = data_df.merge(vix_df, on="t", how="left")
