@@ -47,7 +47,7 @@ class ClassificationTransformer(nn.Module):
 
         # layers to prepare data for encoder
         self.input_layer = nn.Linear(in_features, d_model, **factory_kwargs)
-        self.pos_embedding = PositionalEncoding(d_model, dropout=dropout, max_len=seq_len)
+        self.pos_embedding = PositionalEncoding(d_model, dropout=dropout, max_len=max(seq_len, 5000))
 
         # create encoder
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward, dropout,
