@@ -244,5 +244,6 @@ class StocksDatasetInMem(Dataset):
         try:
             return cls.preprocess_ticker(ticker, exchange, start_date, end_date, preprocessor, 
                                          num_candles_to_stack, tp, tsl, candle_size)
-        except ValueError as ex:
+        except Exception as ex:
+            logger.exception(f"Error while preprocessing ticker '{ticker}'.")
             return f"Error while preprocessing ticker '{ticker}': {ex}"
