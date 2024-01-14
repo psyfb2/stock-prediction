@@ -55,7 +55,7 @@ def main(train_config: dict):
     for ticker in train_config["tickers"]:
         get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=train_config["test_end_date"],
                             candle_size=train_config["candle_size"])
-    
+
     # load preprocessed datasets (train, val, test)
     logger.info("Loading training data")
     train_dataset = StocksDatasetInMem(
@@ -120,7 +120,8 @@ def main(train_config: dict):
     # train model using earling stopping
     early_stopper = EarlyStopper(patience=model_cfg["patience"])
     writer = SummaryWriter(log_dir=local_storage_dir)
-    logger.info(f"Starting training, train dataset length = {len(train_dataloader.dataset)}.")
+    logger.info(f"Starting training, train dataset length = {len(train_dataloader.dataset)}, "
+                f"val dataset length = {len(val_dataloader.dataset)}, test dataset length = {len(test_dataloader.dataset)}")
     logger.info(f"View TensorBoard logs at dir: {local_storage_dir}")
 
     for epoch in range(1, model_cfg["max_epochs"] + 1):

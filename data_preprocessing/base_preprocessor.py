@@ -97,7 +97,7 @@ class BasePreprocessor(ABC):
             if col in ["t", "o", "c", "h", "l", "v"]: continue
 
             # TODO REMOVE ME:
-            self.logger.info(f"before normalisation df['{col}']:\n{df[col]}")
+            self._logger.info(f"before normalisation df['{col}']:\n{df[col]}")
 
             if col in self.bounded_cols:
                 # perform min-max scaling to put in range [-1, 1]
@@ -110,7 +110,7 @@ class BasePreprocessor(ABC):
                 df[col] = (df[col] - means[col]) / stds[col]
             
             # TODO: REMOVE ME
-            self.logger.info(f"after normalisation df['{col}'] (means={means[col]}, stds={stds[col]}):\n{df[col]}")
+            self._logger.info(f"after normalisation df['{col}'] (means={means[col]}, stds={stds[col]}):\n{df[col]}")
     
     def adjust_start_date(self, start_date: datetime, num_candles_to_stack: int) -> datetime:
         """ some data at the start is NaN due to preprocessing (e.g. when calculating moving average)

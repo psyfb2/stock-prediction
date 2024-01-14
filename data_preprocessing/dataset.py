@@ -2,6 +2,7 @@ import logging
 from typing import List, Dict, Tuple, Optional
 from dateutil.parser import parse
 from datetime import timedelta
+from multiprocessing import Pool
 
 import pandas as pd
 import numpy as np
@@ -23,7 +24,7 @@ class StocksDatasetInMem(Dataset):
     def __init__(self, tickers: List[str], start_date: str, end_date: str, 
                  tp: float, tsl: float, num_candles_to_stack: int, 
                  means: Optional[Dict[str, float]] = None, stds: Optional[Dict[str, float]] = None,
-                 candle_size="1d"):
+                 candle_size: str ="1d", procs: Optional[int] = None):
         """ Initialise preprocessed dataset. Performs windowing at inference time to save memory
         (i.e. convert sample shape from (D, ) to (T, D) whenever getting the next data-point.
 
@@ -39,12 +40,14 @@ class StocksDatasetInMem(Dataset):
             stds: (Optional[Dict[str, float]]): dict mapping each feature name to it's std.
                 Used for normalisation. If not specified will calculate this.
             candle_size (str): frequency of candles. "1d" or "1h"
+            procs (Optional[int]): number of proccesses to use for data preprocessing (will perform map over tickers).
+                If None, will use os.cpu_count()
         """
         super().__init__()
         data_df, lengths, means, stds = self.load_dataset_in_mem(
             tickers=tickers, start_date=start_date, end_date=end_date, 
             tp=tp, tsl=tsl, num_candles_to_stack=num_candles_to_stack, 
-            means=means, stds=stds, candle_size=candle_size
+            means=means, stds=stds, candle_size=candle_size, procs=procs
         )
 
         self.features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy(dtype=np.float32)  # (N, D)
@@ -67,13 +70,13 @@ class StocksDatasetInMem(Dataset):
     def __len__(self):
         return len(self.idx_mapper)
 
-    @staticmethod
-    def load_dataset_in_mem(tickers: List[str], start_date: str, end_date: str, 
+    @classmethod
+    def load_dataset_in_mem(cls, tickers: List[str], start_date: str, end_date: str, 
                             tp: float, tsl: float, num_candles_to_stack: int, 
                             means: Optional[Dict[str, float]] = None, 
                             stds: Optional[Dict[str, float]] = None,
-                            candle_size="1d") -> Tuple[pd.DataFrame, List[int], 
-                                                       Dict[str, float], Dict[str, float]]:
+                            candle_size="1d", procs: Optional[int] = None
+                            ) -> Tuple[pd.DataFrame, List[int], Dict[str, float], Dict[str, float]]:
         """ Load whole preprocessed dataset. Does not perform windowing. This should
         be done at inference time to save memory.
 
@@ -89,6 +92,8 @@ class StocksDatasetInMem(Dataset):
             stds: (Optional[Dict[str, float]]): dict mapping each feature name to it's std.
                 Used for standardisation. If not specified will calculate this.
             candle_size (str): frequency of candles. "1d" or "1h"
+            procs (Optional[int]): number of proccesses to use for data preprocessing (will perform map over tickers).
+                If None, will use os.cpu_count()
         Returns:
             (Tuple[pd.DataFrame, List[int], Dict[str, float], Dict[str, float]]):
                 (data_df, lengths, means, stds).
@@ -99,54 +104,21 @@ class StocksDatasetInMem(Dataset):
                 means: means used for standardisation.
                 stds:  stds used for standardisation.
         """
+        preprocessor = AssetPreprocessor(candle_size=candle_size)
+
+        with Pool(procs) as p:
+            results = p.starmap(cls._preprocess_ticker, ((ticker, start_date, end_date, preprocessor,
+                                                         num_candles_to_stack, tp, tsl, candle_size) 
+                                                        for ticker in tickers))
+            
         all_dfs = []
         lengths = []
-        preprocessor = AssetPreprocessor(candle_size=candle_size)
-        adjusted_start_date = preprocessor.adjust_start_date(
-            parse(start_date), num_candles_to_stack
-        ).strftime("%Y-%m-%d")
-        
-        for ticker in tickers:
-            df = get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=end_date, candle_size=candle_size)
-
-            try:
-                df = preprocessor.preprocess_ochl_df(df)
-            except ValueError as ex:
-                logger.exception(f"Got exception while preprocessing df, will skip this ticker.")
-                continue
-
-            # the first candle after performing stacking should have the first date after or including start_date
-            df_after_start_date = df[df["t"] >= start_date]
-
-            if len(df_after_start_date) == 0:
-                logger.warning(f"Not enough data, df has 0 rows after start_date '{start_date}', will skip this ticker")
-                continue
-
-            start_date_idx = df_after_start_date.index[0]
-            if start_date_idx >= num_candles_to_stack - 1:
-                # cut left part of df which goes before start_date even after stacking
-                df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
+        for res in results:
+            if isinstance(res, pd.DataFrame):
+                all_dfs.append(res)
+                lengths.append(len(res))
             else:
-                logger.warning(f"Data is not complete. start_date_idx={start_date_idx}, "
-                               f"but it should be atleast {num_candles_to_stack - 1}. Check data-collection.")
-
-            df["labels"] = binary_label_tp_tsl(df, tp, tsl)
-            logger.info(f"label counts:\n{df['labels'].value_counts(normalize=True)}")
-            logger.info(f"labels has {(df['labels'].isna().sum() / len(df)) * 100}% NaNs, these will be removed.")
-
-            nan_indicies = list(df.loc[pd.isna(df['labels']), :].index)
-            if not all([nan_indicies[i + 1] == nan_indicies[i] + 1 for i in range(len(nan_indicies) - 1)]):
-                logger.warning(f"NaN indicies not contigious: {nan_indicies}")
-            df = df.dropna().reset_index(drop=True)
-
-            if len(df) < num_candles_to_stack:
-                logger.warning(f"ticker '{ticker}' with start_date={start_date}, end_date={end_date} and candle_size={candle_size} "
-                               f"only has {len(df)} candles after preprocessing. This is less than num_candles_to_stack={num_candles_to_stack} "
-                               f"and so will skip this ticker.")
-                continue
-            
-            all_dfs.append(df)
-            lengths.append(len(df))
+                logger.warning(res)
         
         data_df = pd.concat(all_dfs, ignore_index=True)
         logger.info(f"all data label counts:\n{data_df['labels'].value_counts(normalize=True)}")
@@ -198,3 +170,74 @@ class StocksDatasetInMem(Dataset):
         assert num_nans == 0, f"Expected Number of NaNs in finalised data_df to be 0, but was {num_nans}. NaNs per col: {data_df.isna().sum()}"
 
         return data_df, lengths, dict(means), dict(stds)
+    
+    @staticmethod
+    def preprocess_ticker(ticker: str, start_date: str, end_date: str, preprocessor: AssetPreprocessor,
+                          num_candles_to_stack: int, tp: Optional[float] = None, 
+                          tsl: Optional[float] = None, candle_size="1d") -> pd.DataFrame:
+        """ Load preprocessed data for a ticker.
+
+        Args:
+            ticker (str): ticker symbol to preprocess
+            start_date (str): start date for data in yyyy-mm-dd format
+            end_date (str): end date for data in yyyy-mm-dd format (exclusive)
+            preprocessor (AssetPreprocessor): preprocessor to use
+            num_candles_to_stack (int): number of time-steps for a single data-point
+            tp (Optional[float]): take profit value used for labelling (e.g. 0.05 for 5% take profit).
+                If None, wont perform labelling ("labels" col wont be present in returned df). Defaults to None.
+            tsl (Optional[float]): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
+                If None, wont perform labelling ("labels" col wont be present in returned df). Defaults to None
+            candle_size (str): frequency of candles. "1d" or "1h". Defaults to "1d"
+
+        Returns:
+            pd.DataFrame: preprocessed df
+        """
+        adjusted_start_date = preprocessor.adjust_start_date(
+            parse(start_date), num_candles_to_stack
+        ).strftime("%Y-%m-%d")
+
+        df = get_historical_data(symbol=ticker, start_date=adjusted_start_date, 
+                                 end_date=end_date, candle_size=candle_size)
+
+        df = preprocessor.preprocess_ochl_df(df)
+
+        # the first candle after performing stacking should have the first date after or including start_date
+        df_after_start_date = df[df["t"] >= start_date]
+
+        if len(df_after_start_date) == 0:
+            raise ValueError(f"Not enough data, df has 0 rows after start_date '{start_date}', will skip this ticker")
+
+        start_date_idx = df_after_start_date.index[0]
+        if start_date_idx >= num_candles_to_stack - 1:
+            # cut left part of df which goes before start_date even after stacking
+            df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
+        else:
+            logger.warning(f"Data is not complete. start_date_idx={start_date_idx}, "
+                           f"but it should be atleast {num_candles_to_stack - 1}. Check data-collection.")
+
+        # calculate labels
+        if tp is not None and tsl is not None:
+            df["labels"] = binary_label_tp_tsl(df, tp, tsl)
+            logger.info(f"label counts:\n{df['labels'].value_counts(normalize=True)}")
+            logger.info(f"labels has {(df['labels'].isna().sum() / len(df)) * 100}% NaNs, these will be removed.")
+
+            nan_indicies = list(df.loc[pd.isna(df['labels']), :].index)
+            if not all([nan_indicies[i + 1] == nan_indicies[i] + 1 for i in range(len(nan_indicies) - 1)]):
+                logger.warning(f"NaN indicies not contigious: {nan_indicies}")
+
+            df = df.dropna().reset_index(drop=True)
+
+        if len(df) < num_candles_to_stack:
+            raise ValueError(f"ticker '{ticker}' with start_date={start_date}, end_date={end_date} and candle_size={candle_size} "
+                             f"only has {len(df)} candles after preprocessing. This is less than num_candles_to_stack={num_candles_to_stack}.")
+
+        return df
+
+    @classmethod
+    def _preprocess_ticker(cls, ticker: str, start_date: str, end_date: str, preprocessor: AssetPreprocessor,
+                           num_candles_to_stack: int, tp: Optional[float] = None, 
+                           tsl: Optional[float] = None, candle_size="1d") -> Optional[pd.DataFrame]:
+        try:
+            return cls.preprocess_ticker(ticker, start_date, end_date, preprocessor, num_candles_to_stack, tp, tsl, candle_size)
+        except ValueError as ex:
+            return f"Error while preprocessing ticker '{ticker}': {ex}"
