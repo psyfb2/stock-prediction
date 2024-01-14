@@ -182,9 +182,9 @@ def _get_historical_data(symbol: str, start_date: str, end_date: str,
         "ETR": "DE"
     }
     
-    if exchange in yf_exchange_map and '.' not in ticker:
+    if exchange in yf_exchange_map and '.' not in symbol:
         # convert to yfinance ticker format 
-        ticker = f"{ticker}.{yf_exchange_map[exchange]}"
+        symbol = f"{symbol}.{yf_exchange_map[exchange]}"
 
     ticker = yf.Ticker(symbol)
     df = ticker.history(start=start_date, end=end_date, prepost=outside_rth, interval=candle_size).reset_index()
