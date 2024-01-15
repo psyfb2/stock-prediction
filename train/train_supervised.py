@@ -109,6 +109,7 @@ def main(train_config: dict):
 
     # initialise loss function and optimizer
     loss_fn = nn.CrossEntropyLoss(label_smoothing=model_cfg["label_smoothing"])
+    val_loss_fn = nn.CrossEntropyLoss()  # no label smoothing
 
     optimizer = ScheduledOptim(
         optimizer=Adam(classifier.parameters(), betas=(0.9, 0.98), eps=1e-09),
@@ -133,10 +134,6 @@ def main(train_config: dict):
             pred = classifier(X)
             loss = loss_fn(pred, y)
 
-            if torch.isnan(loss).item():
-                logger.warning(f"Got NaN loss {loss}, skipping this Train batch!")
-                continue
-
             train_loss    += loss.item()
             train_correct += (pred.argmax(1) == y).type(torch.float).sum().item()
 
@@ -158,11 +155,7 @@ def main(train_config: dict):
                 X, y = X.to(device), y.to(device)
 
                 pred = classifier(X)
-                loss = loss_fn(pred, y)
-
-                if torch.isnan(loss).item():
-                    logger.warning(f"Got NaN loss {loss}, skipping this Validation batch!")
-                    continue
+                loss = val_loss_fn(pred, y)
 
                 val_loss    += loss.item()
                 val_correct += (pred.argmax(1) == y).type(torch.float).sum().item()
@@ -185,6 +178,10 @@ def main(train_config: dict):
 
     writer.flush()
     writer.close()
+
+    # load the best model
+    classifier.load_state_dict(torch.load(local_storage_dir + "model.pth"))
+    classifier.eval()
 
     # find optimal thresholds using val set  
     best_thresh, safe_thresh, risky_thresh = calc_optimal_threshold(val_dataloader, classifier, device, local_storage_dir + "val_ROC.pdf")
@@ -280,10 +277,10 @@ def calc_optimal_threshold(data_loader: DataLoader, classifier: nn.Module,
     best_thresh_idx = np.argmax(tpr - fpr)
     best_thresh = thresholds[best_thresh_idx]
 
-    safe_thresh_idx = np.argmax(0.25 * tpr - 0.75 * fpr)
+    safe_thresh_idx = np.argmax(tpr - 2 * fpr)
     safe_thresh = thresholds[safe_thresh_idx]
 
-    risky_thresh_idx = np.argmax(0.75 * tpr - 0.25 * fpr)
+    risky_thresh_idx = np.argmax(2 * tpr - fpr)
     risky_thresh = thresholds[risky_thresh_idx]
 
     if plot_fn is not None:
