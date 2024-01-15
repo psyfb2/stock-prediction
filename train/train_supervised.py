@@ -110,14 +110,8 @@ def main(train_config: dict):
     # initialise loss function and optimizer
     loss_fn = nn.CrossEntropyLoss(label_smoothing=model_cfg["label_smoothing"])
     val_loss_fn = nn.CrossEntropyLoss()  # no label smoothing
-
-    optimizer = ScheduledOptim(
-        optimizer=Adam(classifier.parameters(), betas=(0.9, 0.98), eps=1e-09),
-        lr_mul=model_cfg["lr_mul"],
-        d_model=model_cfg["d_model"],
-        n_warmup_steps=model_cfg["n_warmup_steps"]
-    )
-
+    optimizer = Adam(classifier.parameters())
+    
     # train model using earling stopping
     early_stopper = EarlyStopper(patience=model_cfg["patience"])
     writer = SummaryWriter(log_dir=local_storage_dir)
@@ -139,7 +133,7 @@ def main(train_config: dict):
 
             loss.backward()
             nn.utils.clip_grad_norm_(classifier.parameters(), model_cfg["grad_clip"])
-            optimizer.step_and_update_lr()
+            optimizer.step()
             optimizer.zero_grad()
 
         train_loss     /= len(train_dataloader)
