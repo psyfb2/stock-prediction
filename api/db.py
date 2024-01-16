@@ -1,9 +1,13 @@
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, date, timedelta, timezone
 
+import pandas_market_calendars as mcal
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
+
+from data_collection.historical_data import get_exchange
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,33 @@ def insert_probability_request(ticker: str, probability: float):
         ticker (str): _description_
         probability (float): _description_
     """
-    # assuming using ma
+    exchange = get_exchange(ticker)
+    logger.info(f"Caching result for ticker '{ticker}' and probability {probability}")
+
+    try:
+        exchange = mcal.get_calendar(exchange)
+        logger.info(f"Using exchange '{exchange}' for ticker '{ticker}'")
+    except RuntimeError as ex:
+        logger.exception(f"Unknown exchange '{exchange}'.")
+        return
+    
+    close_time = exchange.close_time  # datetime.time object with tz of exchange
+    close_time = datetime.combine(date.today(), close_time) + timedelta(minutes=15)
+    close_time = close_time.time()
+    now        = datetime.now(exchange.tz)
+
+    expiresAt = None
+    if now.time() < close_time:
+        expiresAt = datetime.combine(now, close_time).replace(tzinfo=exchange.tz)
+        
+        
+
+
+
+
+    
+    
+
     api_db["probability_cache"].insert_one(
         {
             "createdAt": datetime.utcnow(),
