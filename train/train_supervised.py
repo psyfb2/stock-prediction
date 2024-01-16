@@ -53,22 +53,22 @@ def main(train_config: dict):
         train_dataset = StocksDatasetInMem(
             tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
             num_candles_to_stack=train_config["num_candles_to_stack"],
-            candle_size=None, features=datasets.train_X, labels=datasets.train_y, 
-            lenghts=datasets.train_lengths
+            candle_size=None, features=datasets["train_X"], labels=datasets["train_y"], 
+            lenghts=datasets["train_lengths"]
         )
 
         val_dataset = StocksDatasetInMem(
             tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
             num_candles_to_stack=train_config["num_candles_to_stack"],
-            candle_size=None, features=datasets.val_X, labels=datasets.val_y, 
-            lenghts=datasets.val_lengths
+            candle_size=None, features=datasets["val_X"], labels=datasets["val_y"], 
+            lenghts=datasets["val_lengths"]
         )
 
         test_dataset = StocksDatasetInMem(
             tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
             num_candles_to_stack=train_config["num_candles_to_stack"],
-            candle_size=None, features=datasets.test_X, labels=datasets.test_y, 
-            lenghts=datasets.test_lengths
+            candle_size=None, features=datasets["test_X"], labels=datasets["test_y"], 
+            lenghts=datasets["test_lengths"]
         )
 
     else:
@@ -113,9 +113,9 @@ def main(train_config: dict):
         )
 
         np.savez(local_storage_dir + "datasets.npz", 
-                train_X=train_dataset.features, train_y=train_dataset.labels, train_lengths=train_dataset.lengths,
-                val_X=val_dataset.features,     val_y=val_dataset.labels,     val_lengths=val_dataset.lengths,
-                test_X=test_dataset.features,   test_y=test_dataset.labels,   test_lengths=test_dataset.lengths)
+                 train_X=train_dataset.features, train_y=train_dataset.labels, train_lengths=train_dataset.lengths,
+                 val_X=val_dataset.features,     val_y=val_dataset.labels,     val_lengths=val_dataset.lengths,
+                 test_X=test_dataset.features,   test_y=test_dataset.labels,   test_lengths=test_dataset.lengths)
 
     train_dataloader = DataLoader(train_dataset, batch_size=model_cfg["batch_size"], shuffle=True)
     val_dataloader   = DataLoader(val_dataset,   batch_size=model_cfg["batch_size"])
