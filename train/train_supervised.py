@@ -46,49 +46,76 @@ def main(train_config: dict):
 
     model_cfg = train_config["model_config"]
 
-    # load all data for tickers into file cache (this is only neccessary because of yfinance 2K requests rate limit per hour)
-    # loading into file cache means 1 req per ticker instead of 3 (train, val, test)
-    preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
-    adjusted_start_date = preprocessor.adjust_start_date(
-        parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
-    ).strftime("%Y-%m-%d")
-    for ticker, exchange in train_config["tickers"]:
-        get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=train_config["test_end_date"],
-                            candle_size=train_config["candle_size"], exchange=exchange)
+    if train_config["data_npz_file"]:
+        # load data arrays which have previously been preprocessed
+        datasets = np.load(train_config["data_npz_file"])
 
-    # load preprocessed datasets (train, val, test)
-    logger.info("Loading training data")
-    train_dataset = StocksDatasetInMem(
-        tickers=train_config["tickers"], start_date=train_config["train_start_date"], 
-        end_date=train_config["val_start_date"], tp=train_config["tp"], tsl=train_config["tsl"],
-        num_candles_to_stack=train_config["num_candles_to_stack"], candle_size=train_config["candle_size"]
-    )
+        train_dataset = StocksDatasetInMem(
+            tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
+            num_candles_to_stack=train_config["num_candles_to_stack"],
+            candle_size=None, features=datasets.train_X, labels=datasets.train_y, 
+            lenghts=datasets.train_lengths
+        )
 
-    # save means and stds, these will be required at inference time
-    means, stds = train_dataset.means, train_dataset.stds
-    with open(local_storage_dir + "normalisation_info.json", "w") as fp:
-        json.dump({"means": means, "stds": stds}, fp)
+        val_dataset = StocksDatasetInMem(
+            tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
+            num_candles_to_stack=train_config["num_candles_to_stack"],
+            candle_size=None, features=datasets.val_X, labels=datasets.val_y, 
+            lenghts=datasets.val_lengths
+        )
 
-    logger.info("Loading validation data")
-    val_dataset = StocksDatasetInMem(
-        tickers=train_config["tickers"], start_date=train_config["val_start_date"], 
-        end_date=train_config["test_start_date"], tp=train_config["tp"], tsl=train_config["tsl"],
-        num_candles_to_stack=train_config["num_candles_to_stack"],
-        means=means, stds=stds, candle_size=train_config["candle_size"]
-    )
+        test_dataset = StocksDatasetInMem(
+            tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
+            num_candles_to_stack=train_config["num_candles_to_stack"],
+            candle_size=None, features=datasets.test_X, labels=datasets.test_y, 
+            lenghts=datasets.test_lengths
+        )
 
-    logger.info("Loading test data")
-    test_dataset = StocksDatasetInMem(
-        tickers=train_config["tickers"], start_date=train_config["test_start_date"], 
-        end_date=train_config["test_end_date"], tp=train_config["tp"], tsl=train_config["tsl"],
-        num_candles_to_stack=train_config["num_candles_to_stack"],
-        means=means, stds=stds, candle_size=train_config["candle_size"]
-    )
+    else:
+        # load all data for tickers into file cache (this is only neccessary 
+        # because of yfinance 2K requests rate limit per hour)
+        # loading into file cache means 1 req per ticker instead of 3 (train, val, test)
+        preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
+        adjusted_start_date = preprocessor.adjust_start_date(
+            parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
+        ).strftime("%Y-%m-%d")
+        for ticker, exchange in train_config["tickers"]:
+            get_historical_data(symbol=ticker, start_date=adjusted_start_date, end_date=train_config["test_end_date"],
+                                candle_size=train_config["candle_size"], exchange=exchange)
 
-    np.savez(local_storage_dir + "datasets.npz", 
-             train_X=train_dataset.features, train_y=train_dataset.labels, train_lengths=train_dataset.lengths,
-             val_X=val_dataset.features,     val_y=val_dataset.labels,     val_lengths=val_dataset.lengths,
-             test_X=test_dataset.features,   test_y=test_dataset.labels,   test_lengths=test_dataset.lengths)
+        # load preprocessed datasets (train, val, test)
+        logger.info("Loading training data")
+        train_dataset = StocksDatasetInMem(
+            tickers=train_config["tickers"], start_date=train_config["train_start_date"], 
+            end_date=train_config["val_start_date"], tp=train_config["tp"], tsl=train_config["tsl"],
+            num_candles_to_stack=train_config["num_candles_to_stack"], candle_size=train_config["candle_size"]
+        )
+
+        # save means and stds, these will be required at inference time
+        means, stds = train_dataset.means, train_dataset.stds
+        with open(local_storage_dir + "normalisation_info.json", "w") as fp:
+            json.dump({"means": means, "stds": stds}, fp)
+
+        logger.info("Loading validation data")
+        val_dataset = StocksDatasetInMem(
+            tickers=train_config["tickers"], start_date=train_config["val_start_date"], 
+            end_date=train_config["test_start_date"], tp=train_config["tp"], tsl=train_config["tsl"],
+            num_candles_to_stack=train_config["num_candles_to_stack"],
+            means=means, stds=stds, candle_size=train_config["candle_size"]
+        )
+
+        logger.info("Loading test data")
+        test_dataset = StocksDatasetInMem(
+            tickers=train_config["tickers"], start_date=train_config["test_start_date"], 
+            end_date=train_config["test_end_date"], tp=train_config["tp"], tsl=train_config["tsl"],
+            num_candles_to_stack=train_config["num_candles_to_stack"],
+            means=means, stds=stds, candle_size=train_config["candle_size"]
+        )
+
+        np.savez(local_storage_dir + "datasets.npz", 
+                train_X=train_dataset.features, train_y=train_dataset.labels, train_lengths=train_dataset.lengths,
+                val_X=val_dataset.features,     val_y=val_dataset.labels,     val_lengths=val_dataset.lengths,
+                test_X=test_dataset.features,   test_y=test_dataset.labels,   test_lengths=test_dataset.lengths)
 
     train_dataloader = DataLoader(train_dataset, batch_size=model_cfg["batch_size"], shuffle=True)
     val_dataloader   = DataLoader(val_dataset,   batch_size=model_cfg["batch_size"])
@@ -110,8 +137,14 @@ def main(train_config: dict):
     # initialise loss function and optimizer
     loss_fn = nn.CrossEntropyLoss(label_smoothing=model_cfg["label_smoothing"])
     val_loss_fn = nn.CrossEntropyLoss()  # no label smoothing
-    optimizer = Adam(classifier.parameters())
-    
+
+    optimizer = ScheduledOptim(
+        optimizer=Adam(classifier.parameters(), betas=(0.9, 0.98), eps=1e-09),
+        lr_mul=model_cfg["lr_mul"],
+        d_model=model_cfg["d_model"],
+        n_warmup_steps=model_cfg["n_warmup_steps"]
+    )
+
     # train model using earling stopping
     early_stopper = EarlyStopper(patience=model_cfg["patience"])
     writer = SummaryWriter(log_dir=local_storage_dir)
@@ -133,7 +166,7 @@ def main(train_config: dict):
 
             loss.backward()
             nn.utils.clip_grad_norm_(classifier.parameters(), model_cfg["grad_clip"])
-            optimizer.step()
+            optimizer.step_and_update_lr()
             optimizer.zero_grad()
 
         train_loss     /= len(train_dataloader)
@@ -176,16 +209,40 @@ def main(train_config: dict):
     # load the best model
     classifier.load_state_dict(torch.load(local_storage_dir + "model.pth"))
     classifier.eval()
+    eval_model(classifier=classifier, val_dataloader=val_dataloader, test_dataloader=test_dataloader, 
+               val_roc_path=local_storage_dir + "val_ROC.pdf", test_roc_path=local_storage_dir + "test_ROC.pdf",
+               classification_report_path=local_storage_dir + "classification_report.txt")
+
+    logger.info(f"Finished training and evlauation in {time.time() - start_time}s. Find related files in {local_storage_dir}")
+
+
+def eval_model(classifier: nn.Module, val_dataloader: DataLoader, 
+               test_dataloader: DataLoader, val_roc_path: str, 
+               test_roc_path: str, classification_report_path: str):
+    """ Evaluate model by finding best thresholds on validation ROC,
+    best_threshold maximizes TPR - FPR, safe_threshold maximizes TPR - 2 * FPR, 
+    risky_threshold maximizes 2 * TPR - FPR. Then save a classification report for
+    the three thresholds on the test set. Also plot ROC on test set.
+
+    Args:
+        classifier (nn.Module): classifier to test.
+        val_dataloader (DataLoader): validation set dataloader
+        test_dataloader (DataLoader): test set dataloader
+        val_roc_path (str): file name path for which to save validation set ROC (.pdf file)
+        test_roc_path (str): file name path for which to save test set ROC (.pdf file)
+        classification_report_path (str): file name path for which to save classification report (.txt file)
+    """
+    device = get_device()
 
     # find optimal thresholds using val set  
-    best_thresh, safe_thresh, risky_thresh = calc_optimal_threshold(val_dataloader, classifier, device, local_storage_dir + "val_ROC.pdf")
+    best_thresh, safe_thresh, risky_thresh = calc_optimal_threshold(val_dataloader, classifier, device, val_roc_path)
     logger.info(f"best_thresh = {best_thresh}, safe_thresh = {safe_thresh}, risky_thresh = {risky_thresh}")
 
     # plot ROC on test set and report results:
     #    - classification report using best_thresh
     #    - classification report using safe_thresh
     #    - classification report using risky_thresh
-    calc_optimal_threshold(test_dataloader, classifier, device, local_storage_dir + "test_ROC.pdf")
+    calc_optimal_threshold(test_dataloader, classifier, device, test_roc_path)
 
     ys                 = np.zeros( (len(test_dataloader.dataset), ) )
     preds_best_thresh  = np.zeros( (len(test_dataloader.dataset), ) )
@@ -216,7 +273,7 @@ def main(train_config: dict):
     safe_thresh_report  = classification_report(ys, preds_safe_thresh,  target_names=["Don't Buy", "Buy"])
     risky_thresh_report = classification_report(ys, preds_risky_thresh, target_names=["Don't Buy", "Buy"])
 
-    with open(local_storage_dir + "classification_report.txt", mode="w") as f:
+    with open(classification_report_path, mode="w") as f:
         f.writelines([
             f"best_thresh = {best_thresh}\n",
             "best_thresh_report:", best_thresh_report,
@@ -225,9 +282,6 @@ def main(train_config: dict):
             f"\nrisky_thresh = {risky_thresh}\n",
             "risky_thresh_report", risky_thresh_report
         ])
-
-    logger.info(f"Finished training and evaluation in {time.time() - start_time}s")
-    logger.info(f"Find related files in {local_storage_dir}")
 
 
 def calc_optimal_threshold(data_loader: DataLoader, classifier: nn.Module, 

@@ -24,7 +24,9 @@ class StocksDatasetInMem(Dataset):
     def __init__(self, tickers: List[List[str]], start_date: str, end_date: str, 
                  tp: float, tsl: float, num_candles_to_stack: int, 
                  means: Optional[Dict[str, float]] = None, stds: Optional[Dict[str, float]] = None,
-                 candle_size: str ="1d", procs: Optional[int] = None):
+                 candle_size: str ="1d", procs: Optional[int] = None, 
+                 features: Optional[np.ndarray] = None, labels: Optional[np.ndarray] = None,
+                 lengths: Optional[int] = None):
         """ Initialise preprocessed dataset. Performs windowing at inference time to save memory
         (i.e. convert sample shape from (D, ) to (T, D) whenever getting the next data-point.
 
@@ -42,20 +44,47 @@ class StocksDatasetInMem(Dataset):
             candle_size (str): frequency of candles. "1d" or "1h"
             procs (Optional[int]): number of proccesses to use for data preprocessing (will perform map over tickers).
                 If None, will use os.cpu_count()
+            features (Optional[np.ndarray]): (N, D) array representing features. If this is given will ignore
+                tickers, start_date, end_date, tp, tsl, means, stds, candle_size and procs, as will treat
+                this as the dataset.
+            labels (Optional[np.ndarray]): (N, ) array representing labels. If this is given will ignore
+                tickers, start_date, end_date, tp, tsl, means, stds, candle_size and procs, as will treat
+                this as the dataset.
+            lengths (Optional[int]): represents calculated length of each ticker within features. If this is given will ignore
+                tickers, start_date, end_date, tp, tsl, means, stds, candle_size and procs, as will treat
+                this as the dataset.
         """
         super().__init__()
-        data_df, lengths, means, stds = self.load_dataset_in_mem(
-            tickers=tickers, start_date=start_date, end_date=end_date, 
-            tp=tp, tsl=tsl, num_candles_to_stack=num_candles_to_stack, 
-            means=means, stds=stds, candle_size=candle_size, procs=procs
-        )
+        if features is not None and labels is not None and lengths is not None:
+            # perform some checks on data
+            if features.shape[0] != np.sum(lengths):
+                raise ValueError(f"Length of features is {features.shape[0]}, but expected it to be {np.sum(lengths)}")
+            
+            num_nans = np.count_nonzero(np.isnan(features))
+            if num_nans != 0:
+                raise ValueError(f"features has {num_nans} NaN elements. This must be zero.")
+    
+            if not np.all( (labels == 0.0) | (labels == 1.0) ):
+                raise ValueError(f"Labels may only contain elements 0 or 1, but it has elements outside this range.")
 
-        self.features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy(dtype=np.float32)  # (N, D)
-        self.labels   = data_df["labels"].to_numpy(dtype=np.int64)  # (N, )
-        self.lengths  = np.array(lengths)  # (len(tickers), )
+            self.features = features
+            self.labels = labels
+            self.lengths = lengths
+            self.means = self.stds = None
+        else:
+            data_df, lengths, means, stds = self.load_dataset_in_mem(
+                tickers=tickers, start_date=start_date, end_date=end_date, 
+                tp=tp, tsl=tsl, num_candles_to_stack=num_candles_to_stack, 
+                means=means, stds=stds, candle_size=candle_size, procs=procs
+            )
+
+            self.features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy(dtype=np.float32)  # (N, D)
+            self.labels   = data_df["labels"].to_numpy(dtype=np.int64)  # (N, )
+            self.lengths  = np.array(lengths)  # (len(tickers), )
+            self.means = means
+            self.stds = stds
+
         self.num_candles_to_stack = num_candles_to_stack
-        self.means = means
-        self.stds = stds
         self.idx_mapper = IndexMapper(lengths, num_candles_to_stack)
 
     def __getitem__(self, idx: int):
