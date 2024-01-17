@@ -76,7 +76,8 @@ def main(train_config: dict):
         # load all data for tickers into file cache (this is only neccessary 
         # because of yfinance 2K requests rate limit per hour)
         # loading into file cache means 1 req per ticker instead of 3 (train, val, test)
-        preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
+        preprocessor = AssetPreprocessor(features_to_use=train_config["features_to_use"], 
+                                         candle_size=train_config["candle_size"])
         adjusted_start_date = preprocessor.adjust_start_date(
             parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
         ).strftime("%Y-%m-%d")
@@ -87,7 +88,9 @@ def main(train_config: dict):
         # load preprocessed datasets (train, val, test)
         logger.info("Loading training data")
         train_dataset = StocksDatasetInMem(
-            tickers=train_config["tickers"], start_date=train_config["train_start_date"], 
+            tickers=train_config["tickers"], features_to_use=train_config["features_to_use"],
+            vix_features_to_use=train_config["vix_features_to_use"],
+            start_date=train_config["train_start_date"], 
             end_date=train_config["val_start_date"], tp=train_config["tp"], tsl=train_config["tsl"],
             num_candles_to_stack=train_config["num_candles_to_stack"], candle_size=train_config["candle_size"]
         )
@@ -99,7 +102,9 @@ def main(train_config: dict):
 
         logger.info("Loading validation data")
         val_dataset = StocksDatasetInMem(
-            tickers=train_config["tickers"], start_date=train_config["val_start_date"], 
+            tickers=train_config["tickers"], features_to_use=train_config["features_to_use"],
+            vix_features_to_use=train_config["vix_features_to_use"],
+            start_date=train_config["val_start_date"], 
             end_date=train_config["test_start_date"], tp=train_config["tp"], tsl=train_config["tsl"],
             num_candles_to_stack=train_config["num_candles_to_stack"],
             means=means, stds=stds, candle_size=train_config["candle_size"]
@@ -107,7 +112,9 @@ def main(train_config: dict):
 
         logger.info("Loading test data")
         test_dataset = StocksDatasetInMem(
-            tickers=train_config["tickers"], start_date=train_config["test_start_date"], 
+            tickers=train_config["tickers"], features_to_use=train_config["features_to_use"],
+            vix_features_to_use=train_config["vix_features_to_use"],
+            start_date=train_config["test_start_date"], 
             end_date=train_config["test_end_date"], tp=train_config["tp"], tsl=train_config["tsl"],
             num_candles_to_stack=train_config["num_candles_to_stack"],
             means=means, stds=stds, candle_size=train_config["candle_size"]

@@ -21,25 +21,33 @@ logger = logging.getLogger(__name__)
 #       which is useful when the dataset is so huge it cannot fit in memory
 
 class StocksDatasetInMem(Dataset):
-    def __init__(self, tickers: List[List[str]], start_date: str, end_date: str, 
+    def __init__(self, tickers: List[List[str]], 
+                 features_to_use: List[str], 
+                 vix_features_to_use: List[str],
+                 start_date: str, end_date: str, 
                  tp: float, tsl: float, num_candles_to_stack: int, 
-                 means: Optional[Dict[str, float]] = None, stds: Optional[Dict[str, float]] = None,
+                 means: Optional[Dict[str, Dict[str, float]]] = None,
+                 stds: Optional[Dict[str, Dict[str, float]]] = None,
                  candle_size: str ="1d", procs: Optional[int] = None, 
-                 features: Optional[np.ndarray] = None, labels: Optional[np.ndarray] = None,
+                 features: Optional[np.ndarray] = None, 
+                 labels: Optional[np.ndarray] = None,
                  lengths: Optional[int] = None):
         """ Initialise preprocessed dataset. Performs windowing at inference time to save memory
         (i.e. convert sample shape from (D, ) to (T, D) whenever getting the next data-point.
 
         Args:
             tickers (List[List[str]]): [[ticker, exchange], ...] for tickers to be included in the dataset
+            features_to_use (List[str]): feature names for asset preprocessor
+            vix_features_to_use (List[str]): features to use for VIX preprocessor. If None or empty won't
+                include VIX data.
             start_date (str): start date for data in yyyy-mm-dd format
             end_date (str): end date for data in yyyy-mm-dd format (exclusive)
             tp (float): take profit value used for labelling (e.g. 0.05 for 5% take profit)
             tsl (float): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
             num_candles_to_stack (int): number of time-steps for a single data-point
-            means (Optional[Dict[str, float]]): dict mapping each feature name to it's mean.
+            means (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's mean.
                 Used for normalisation. If not specified will calculate this.
-            stds: (Optional[Dict[str, float]]): dict mapping each feature name to it's std.
+            stds: (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's std.
                 Used for normalisation. If not specified will calculate this.
             candle_size (str): frequency of candles. "1d" or "1h"
             procs (Optional[int]): number of proccesses to use for data preprocessing (will perform map over tickers).
@@ -73,7 +81,8 @@ class StocksDatasetInMem(Dataset):
             self.means = self.stds = None
         else:
             data_df, lengths, means, stds = self.load_dataset_in_mem(
-                tickers=tickers, start_date=start_date, end_date=end_date, 
+                tickers=tickers, features_to_use=features_to_use, vix_features_to_use=vix_features_to_use,
+                start_date=start_date, end_date=end_date, 
                 tp=tp, tsl=tsl, num_candles_to_stack=num_candles_to_stack, 
                 means=means, stds=stds, candle_size=candle_size, procs=procs
             )
@@ -103,10 +112,11 @@ class StocksDatasetInMem(Dataset):
         return len(self.idx_mapper)
 
     @classmethod
-    def load_dataset_in_mem(cls, tickers: List[List[str]], start_date: str, end_date: str, 
+    def load_dataset_in_mem(cls, tickers: List[List[str]], features_to_use: List[str],
+                            vix_features_to_use: List[str], start_date: str, end_date: str, 
                             tp: float, tsl: float, num_candles_to_stack: int, 
-                            means: Optional[Dict[str, float]] = None, 
-                            stds: Optional[Dict[str, float]] = None,
+                            means: Optional[Dict[str, Dict[str, float]]] = None, 
+                            stds: Optional[Dict[str, Dict[str, float]]] = None,
                             candle_size="1d", procs: Optional[int] = None
                             ) -> Tuple[pd.DataFrame, List[int], Dict[str, float], Dict[str, float]]:
         """ Load whole preprocessed dataset. Does not perform windowing. This should
@@ -114,14 +124,17 @@ class StocksDatasetInMem(Dataset):
 
         Args:
             tickers (List[List[str]]): [[ticker, exchange], ...] for tickers to be included in the dataset
+            features_to_use (List[str]): feature names for asset preprocessor
+            vix_features_to_use (List[str]): features to use for VIX preprocessor. If None or empty won't
+                include VIX data.
             start_date (str): start date for data in yyyy-mm-dd format
             end_date (str): end date for data in yyyy-mm-dd format (exclusive)
             tp (float): take profit value used for labelling (e.g. 0.05 for 5% take profit)
             tsl (float): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
             num_candles_to_stack (int): number of time-steps for a single data-point
-            means (Optional[Dict[str, float]]): dict mapping each feature name to it's mean.
+            means (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's mean.
                 Used for normalisation. If not specified will calculate this.
-            stds: (Optional[Dict[str, float]]): dict mapping each feature name to it's std.
+            stds: (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's std.
                 Used for standardisation. If not specified will calculate this.
             candle_size (str): frequency of candles. "1d" or "1h"
             procs (Optional[int]): number of proccesses to use for data preprocessing (will perform map over tickers).
@@ -136,7 +149,12 @@ class StocksDatasetInMem(Dataset):
                 means: means used for standardisation.
                 stds:  stds used for standardisation.
         """
-        preprocessor = AssetPreprocessor(candle_size=candle_size)
+        preprocessor = AssetPreprocessor(features_to_use=features_to_use, candle_size=candle_size)
+
+        calc_means = means is None or stds is None
+        if calc_means:
+            means = {}
+            stds = {}
 
         with Pool(procs) as p:
             results = p.starmap(cls._preprocess_ticker, ((ticker, exchange, start_date, end_date, preprocessor,
@@ -155,46 +173,43 @@ class StocksDatasetInMem(Dataset):
         data_df = pd.concat(all_dfs, ignore_index=True)
         logger.info(f"all data label counts:\n{data_df['labels'].value_counts(normalize=True)}")
 
+        if calc_means:
+            means["asset"] = data_df.mean(numeric_only=True)
+            stds["asset"]  = data_df.std(numeric_only=True)
+        preprocessor.normalise_df(data_df, means=means["asset"], stds=stds["asset"])
+
         num_nans = data_df.isna().sum().sum()
         assert num_nans == 0, f"Expected Number of NaNs prior to loading VIX to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
 
         # add VIX data as broad market sentiment indicators
-        vix_preprocessor = VixPreprocessor()
+        if vix_features_to_use:
+            vix_preprocessor = VixPreprocessor(features_to_use=vix_features_to_use)
 
-        vix_df = get_vix_daily_data("VIX")
-        vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h"])
-        vix_df = vix_df.rename(columns={col : f"vix_{col}" for col in vix_df.columns if col != 't'})
-        preprocessor.bounded_cols.update({f"vix_{k}": v for k, v in vix_preprocessor.bounded_cols.items()})
+            vix_df = get_vix_daily_data("VIX")
+            vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h"])
+    
+            if calc_means:
+                means["vix"] = vix_df.mean(numeric_only=True)
+                stds["vix"]  = vix_df.std(numeric_only=True)
+    
+            vix_df = vix_preprocessor.normalise_df(vix_df, means=means["vix"], stds=stds["vix"])
 
-        # fill VIX df (might be missing some days, just fill with previous value)
-        last_idx = 0
-        vix_df_filled = pd.DataFrame(columns=list(vix_df.columns))
-        for date in daterange(vix_df["t"].iloc[0], vix_df["t"].iloc[-1] + timedelta(days=1)):
-            if date == vix_df["t"].iloc[last_idx]:
-                vix_df_filled = pd.concat([vix_df_filled, vix_df.iloc[last_idx:last_idx + 1]], ignore_index=True)
-                last_idx += 1
-            else:
-                row = vix_df.iloc[last_idx - 1:last_idx].copy()
-                row["t"] = date
-                vix_df_filled = pd.concat([vix_df_filled, row], ignore_index=True)
-        vix_df = vix_df_filled
+            # fill VIX df (might be missing some days, just fill with previous value)
+            last_idx = 0
+            vix_df_filled = pd.DataFrame(columns=list(vix_df.columns))
+            for date in daterange(vix_df["t"].iloc[0], vix_df["t"].iloc[-1] + timedelta(days=1)):
+                if date == vix_df["t"].iloc[last_idx]:
+                    vix_df_filled = pd.concat([vix_df_filled, vix_df.iloc[last_idx:last_idx + 1]], ignore_index=True)
+                    last_idx += 1
+                else:
+                    row = vix_df.iloc[last_idx - 1:last_idx].copy()
+                    row["t"] = date
+                    vix_df_filled = pd.concat([vix_df_filled, row], ignore_index=True)
+            vix_df = vix_df_filled
 
-        unmerged_data_df = data_df
-        data_df = data_df.merge(vix_df, on="t", how="left")
-        assert all(unmerged_data_df["t"] == data_df["t"]), f"Merging has not preserved order of rows!"
-
-        num_nans = data_df.isna().sum().sum()
-        assert num_nans == 0, f"Expected Number of NaNs prior to normalisation to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
-        
-        # normalise data
-        if not means or not stds:
-            means = data_df.mean(numeric_only=True)
-            logger.info(f"Calulated means:\n{dict(means)}")
-
-            stds  = data_df.std(numeric_only=True)
-            logger.info(f"Calulated stds:\n{dict(stds)}")
-            
-        preprocessor.normalise_df(data_df, means, stds)
+            unmerged_data_df = data_df
+            data_df = data_df.merge(vix_df, on="t", how="left")
+            assert all(unmerged_data_df["t"] == data_df["t"]), f"Merging has not preserved order of rows!"
 
         assert len(data_df) == sum(lengths), f"length of data_df is {len(data_df)}, but expected it to be {sum(lengths)}"
         assert ( (data_df["labels"] == 0.0) | (data_df["labels"] == 1.0) ).all()
@@ -207,8 +222,8 @@ class StocksDatasetInMem(Dataset):
     @staticmethod
     def preprocess_ticker(ticker: str, exchange: str, start_date: str, end_date: str, 
                           preprocessor: AssetPreprocessor, num_candles_to_stack: int, 
-                          tp: Optional[float] = None, tsl: Optional[float] = None, candle_size="1d"
-                          ) -> pd.DataFrame:
+                          tp: Optional[float] = None, tsl: Optional[float] = None, candle_size="1d",
+                          raise_invalid_data_exception=False) -> pd.DataFrame:
         """ Load preprocessed data for a ticker. Will not merge VIX data or perform normalisation.
 
         Args:
@@ -223,7 +238,9 @@ class StocksDatasetInMem(Dataset):
             tsl (Optional[float]): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
                 If None, wont perform labelling ("labels" col wont be present in returned df). Defaults to None
             candle_size (str): frequency of candles. "1d" or "1h". Defaults to "1d"
-
+            raise_invalid_data_exception (bool): when getting historical data from API, check that
+                there are no missing candles between start_date and end_date. If there is then
+                throw an exception if this arg is True. Otherwise just warn.
         Returns:
             pd.DataFrame: preprocessed df
         """
@@ -232,7 +249,8 @@ class StocksDatasetInMem(Dataset):
         ).strftime("%Y-%m-%d")
 
         df = get_historical_data(symbol=ticker, start_date=adjusted_start_date, 
-                                 end_date=end_date, candle_size=candle_size, exchange=exchange)
+                                 end_date=end_date, candle_size=candle_size, 
+                                 exchange=exchange, raise_invalid_data_exception=raise_invalid_data_exception)
 
         df = preprocessor.preprocess_ochl_df(df)
 

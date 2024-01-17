@@ -5,6 +5,8 @@ import torch
 
 from models.classification_transformer import ClassificationTransformer
 from data_preprocessing.asset_preprocessor import AssetPreprocessor
+from data_preprocessing.dataset import StocksDatasetInMem
+from models.mlp import MLP
 from utils.get_device import get_device
 
 
@@ -19,12 +21,23 @@ MODEL_PATH = os.environ["CLASSIFIER_MODEL_PATH"]
 
 # load model
 device = get_device()
-classifier = ClassificationTransformer(
+if model_cfg["model_type"] == "classification_transformer":
+    classifier = ClassificationTransformer(
         seq_len=train_config["num_candles_to_stack"], in_features=normalisation_info["in_features"],
         num_classes=2, d_model=model_cfg["d_model"], nhead=model_cfg["nhead"], num_encoder_layers=model_cfg["num_encoder_layers"],
         dim_feedforward=model_cfg["dim_feedforward"], dropout=model_cfg["dropout"], layer_norm_eps=model_cfg["layer_norm_eps"],
         norm_first=model_cfg["norm_first"]
-).to(device)
+    ).to(device)
+
+elif model_cfg["model_type"] == "mlp":
+    classifier = MLP(
+        dropout=model_cfg["dropout"], seq_len=train_config["num_candles_to_stack"], 
+        in_features=normalisation_info["in_features"], num_classes=2, 
+        hidden_layers=model_cfg["hidden_layers"]
+    ).to(device)
+    
+else:
+    raise ValueError(f"model_type '{model_cfg['model_type']}' is not recognised.")
 classifier.load_state_dict(torch.load(MODEL_PATH))
 classifier.eval()
 
@@ -42,4 +55,6 @@ def predict(ticker: str) -> float:
         float: bullish probability.
     """
     # load data for ticker
-    pass
+    StocksDatasetInMem.preprocess_ticker(
+        ticker=ticker, exchange='', start_date=""
+    )

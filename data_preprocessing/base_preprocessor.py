@@ -6,12 +6,13 @@ from logging import Logger
 from dateutil.parser import parse
 from datetime import timedelta
 from warnings import warn
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 from abc import ABC, abstractmethod
 
 
 class BasePreprocessor(ABC):
-    def __init__(self, logger: Logger, bounded_cols: Dict[str, Tuple[float, float]], candle_size="1d"):
+    def __init__(self, logger: Logger, bounded_cols: Dict[str, Tuple[float, float]], 
+                 features_to_use: List[str], candle_size="1d"):
         """ Create a preprocessor.
         Args:
             logger (Logger): logger object
@@ -19,10 +20,12 @@ class BasePreprocessor(ABC):
                 all features are assumed to be stationary.
                 the bounded ones are normalised using min-max scaling to be in [-1, 1]
                 otherwise standardisation is used.
+            features_to_use (List[str]): which features to include in a preprocessed df
             candle_size (str): frequency of candles. "1d" or "1h" 
         """
         self._logger = logger
         self.bounded_cols = bounded_cols
+        self.features_to_use = features_to_use
         self.candle_size = candle_size
 
         if candle_size not in ("1d", "1h"):
@@ -74,7 +77,7 @@ class BasePreprocessor(ABC):
         # ------ ------ #
 
         # apply TI's
-        df = self.calc_features(df)
+        df = self.calc_features(df)[self.features_to_use]
         
         # drop NaN values produced by TI's
         df = df.dropna().reset_index(drop=True)
@@ -100,11 +103,13 @@ class BasePreprocessor(ABC):
                 # perform min-max scaling to put in range [-1, 1]
                 low, high = self.bounded_cols[col]
                 df[col] = 2 * ((df[col] - low) / (high - low)) - 1
-            else:
+            elif col in self.features_to_use:
                 # standardise
                 if stds[col] == 0:
                     raise ValueError(f"stds for col '{col}' must not be 0. df['{col}']:\n{df[col]}")
                 df[col] = (df[col] - means[col]) / stds[col]
+            else:
+                raise ValueError(f"col '{col}' is not recognised.")
     
     def adjust_start_date(self, start_date: datetime, num_candles_to_stack: int) -> datetime:
         """ some data at the start is NaN due to preprocessing (e.g. when calculating moving average)

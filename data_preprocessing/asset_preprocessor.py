@@ -1,17 +1,19 @@
+from typing import List
+from logging import getLogger
+
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
-
-from logging import getLogger
 
 from custom_ti import percentage_macd, normalised_return
 from data_preprocessing.base_preprocessor import BasePreprocessor
 
 
 class AssetPreprocessor(BasePreprocessor):
-    def __init__(self, candle_size="1d"):
+    def __init__(self, features_to_use: List[str], candle_size="1d"):
         """ Initialise a preprocessor for any asset with columns ['t', 'o', 'c', 'h', 'l', 'v']. 
         Args:
+            features_to_use (list[str]): which features to include in a preprocessed df
             candle_size (str): frequency of candles. Either "1d" or "1h".
         """
         super().__init__(
@@ -40,7 +42,9 @@ class AssetPreprocessor(BasePreprocessor):
                 "day_of_month_cos":  (-1, 1),
                 "month_of_year_sin": (-1, 1),
                 "month_of_year_cos": (-1, 1)
-            }
+            },
+            features_to_use=features_to_use,
+            candle_size=candle_size
         )
 
     def calc_features(self, df: pd.DataFrame) -> pd.DataFrame:
