@@ -84,6 +84,9 @@ class StocksDatasetInMem(Dataset):
             self.means = means
             self.stds = stds
 
+        unique, counts = np.unique(self.labels, return_counts=True)
+        self.label_counts = dict(zip(unique, counts))
+
         self.num_candles_to_stack = num_candles_to_stack
         self.idx_mapper = IndexMapper(lengths, num_candles_to_stack)
 
@@ -206,7 +209,7 @@ class StocksDatasetInMem(Dataset):
                           preprocessor: AssetPreprocessor, num_candles_to_stack: int, 
                           tp: Optional[float] = None, tsl: Optional[float] = None, candle_size="1d"
                           ) -> pd.DataFrame:
-        """ Load preprocessed data for a ticker.
+        """ Load preprocessed data for a ticker. Will not merge VIX data or perform normalisation.
 
         Args:
             ticker (str): ticker symbol to preprocess

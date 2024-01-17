@@ -94,7 +94,7 @@ def main(train_config: dict):
         # save means and stds, these will be required at inference time
         means, stds = train_dataset.means, train_dataset.stds
         with open(local_storage_dir + "normalisation_info.json", "w") as fp:
-            json.dump({"means": means, "stds": stds}, fp)
+            json.dump({"means": means, "stds": stds, "in_features": train_dataset.features.shape[-1]}, fp)
 
         logger.info("Loading validation data")
         val_dataset = StocksDatasetInMem(
@@ -146,10 +146,11 @@ def main(train_config: dict):
     )
 
     # train model using earling stopping
-    early_stopper = EarlyStopper(patience=model_cfg["patience"])
+    early_stopper = EarlyStopper(patience=model_cfg["patience"], min_delta=model_cfg["min_delta"])
     writer = SummaryWriter(log_dir=local_storage_dir)
-    logger.info(f"Starting training, train dataset length = {len(train_dataloader.dataset)}, "
-                f"val dataset length = {len(val_dataloader.dataset)}, test dataset length = {len(test_dataloader.dataset)}")
+    logger.info(f"Train dataset length = {len(train_dataloader.dataset)}, with label counts: {train_dataset.label_counts}")
+    logger.info(f"Val dataset length = {len(val_dataloader.dataset)}, with label counts: {val_dataset.label_counts}")
+    logger.info(f"Test dataset length = {len(test_dataloader)}, with label counts: {test_dataset.label_counts}")
     logger.info(f"View TensorBoard logs at dir: {local_storage_dir}")
 
     for epoch in range(1, model_cfg["max_epochs"] + 1):

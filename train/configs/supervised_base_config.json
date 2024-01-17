@@ -531,6 +531,7 @@
     "n_warmup_steps": 1000,
     "label_smoothing": 0.05,
     "patience": 100,
+    "min_delta": 0.01,
     "max_epochs": 10000,
     "batch_size": 1024,
     "grad_clip": 5.0

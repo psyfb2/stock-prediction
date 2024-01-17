@@ -1,6 +1,10 @@
+import re
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+
+from api.db import insert_probability_request, get_probability_request
 
 import random
 
@@ -17,7 +21,16 @@ app.add_middleware(
 
 @app.get("/probability/{ticker}")
 def get_probability(ticker: str):
-    return {"probability": random.randint(0, 101), "ticker": ticker}
+    ticker = ticker.upper()
+    ticker = re.sub(r"[A-Z\.]", "", ticker)
+
+    cache_result = get_probability_request(ticker)
+    if cache_result:
+        return {"probability": cache_result["probability"], "ticker": ticker}
+    
+
+    
+    res = {"probability": random.randint(0, 101), "ticker": ticker}
 
 
 app.mount("/", StaticFiles(directory="static",html = True), name="static")
