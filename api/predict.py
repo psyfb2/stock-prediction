@@ -4,6 +4,7 @@ import json
 import torch
 
 from models.classification_transformer import ClassificationTransformer
+from data_preprocessing.asset_preprocessor import AssetPreprocessor
 from utils.get_device import get_device
 
 
@@ -16,8 +17,8 @@ with open(os.environ["NORMALISATION_INFO_PATH"]) as json_file:
 
 MODEL_PATH = os.environ["CLASSIFIER_MODEL_PATH"]
 
+# load model
 device = get_device()
-
 classifier = ClassificationTransformer(
         seq_len=train_config["num_candles_to_stack"], in_features=normalisation_info["in_features"],
         num_classes=2, d_model=model_cfg["d_model"], nhead=model_cfg["nhead"], num_encoder_layers=model_cfg["num_encoder_layers"],
@@ -26,6 +27,9 @@ classifier = ClassificationTransformer(
 ).to(device)
 classifier.load_state_dict(torch.load(MODEL_PATH))
 classifier.eval()
+
+# initialise preprocessors
+asset_preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
 
 
 def predict(ticker: str) -> float:
@@ -37,4 +41,5 @@ def predict(ticker: str) -> float:
     Returns:
         float: bullish probability.
     """
-    
+    # load data for ticker
+    pass
