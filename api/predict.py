@@ -42,7 +42,10 @@ classifier.load_state_dict(torch.load(MODEL_PATH))
 classifier.eval()
 
 # initialise preprocessors
-asset_preprocessor = AssetPreprocessor(candle_size=train_config["candle_size"])
+asset_preprocessor = AssetPreprocessor(
+    features_to_use=train_config["features_to_use"], 
+    candle_size=train_config["candle_size"]
+)
 
 
 def predict(ticker: str) -> float:

@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List
 
 import pandas as pd
@@ -264,6 +264,36 @@ def validate_historical_data(df: pd.DataFrame, start_date: str, end_date: str, c
             f"but got {len(df)}.\ndates:\n{dates}\ndf['t']:\n{df['t']}\nUsing exchange {market_calander_name}")
     else:
         logger.warning(f"validation of data df not currently implemented for candle size '{candle_size}'")
+
+
+def get_last_full_trading_day(market_calander_name="NASDAQ") -> datetime:
+    """ Get the most recent trading day for a given exchange. 
+    if today is on a trading day, will only return today if
+    current time is 15 minutes after the close.
+
+    Args:
+        market_calander_name (str, optional): name of exchange. Defaults to "NASDAQ".
+    Returns:
+        datetime: most recent trading day
+    """
+    exchange = mcal.get_calendar(market_calander_name)
+
+    tz         = exchange.tz
+    close_time = exchange.close_time  # datetime.time object with tz of exchange
+    close_time = datetime.combine(date.today(), close_time) + timedelta(minutes=15)
+    close_time = close_time.time()
+    now        = datetime.now(tz)
+
+    start_date = date.today() - timedelta(days=30)
+    end_date = date.today()
+    if now.time() < close_time:
+        end_date = end_date - timedelta(days=1)
+    
+    valid_days = exchange.valid_days(
+        start_date=start_date.strftime("%Y-%m-%d"), 
+        end_date=end_date.strftime("%Y-%m-%d")
+    )
+    return valid_days[-1].to_pydatetime()
 
 
 def get_all_sp500_tickers() -> List[str]:
