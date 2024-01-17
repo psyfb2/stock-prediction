@@ -192,7 +192,7 @@ class StocksDatasetInMem(Dataset):
                 means["vix"] = dict(vix_df.mean(numeric_only=True))
                 stds["vix"]  = dict(vix_df.std(numeric_only=True))
     
-            vix_df = vix_preprocessor.normalise_df(vix_df, means=means["vix"], stds=stds["vix"])
+            vix_preprocessor.normalise_df(vix_df, means=means["vix"], stds=stds["vix"])
 
             # fill VIX df (might be missing some days, just fill with previous value)
             last_idx = 0
