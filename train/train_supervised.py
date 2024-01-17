@@ -150,7 +150,7 @@ def main(train_config: dict):
     optimizer = ScheduledOptim(
         optimizer=Adam(classifier.parameters(), betas=(0.9, 0.98), eps=1e-09),
         lr_mul=model_cfg["lr_mul"],
-        d_model=model_cfg["d_model"],
+        d_model=model_cfg.get("d_model", 512),
         n_warmup_steps=model_cfg["n_warmup_steps"]
     )
 
