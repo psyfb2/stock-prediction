@@ -85,7 +85,7 @@ class StocksDatasetInMem(Dataset):
             self.stds = stds
 
         unique, counts = np.unique(self.labels, return_counts=True)
-        self.label_counts = dict(zip(unique, counts))
+        self.label_counts = {l: c / self.labels.shape[0] for l, c in zip(unique, counts)}
 
         self.num_candles_to_stack = num_candles_to_stack
         self.idx_mapper = IndexMapper(lengths, num_candles_to_stack)
