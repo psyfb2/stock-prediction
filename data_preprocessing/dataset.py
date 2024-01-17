@@ -174,8 +174,8 @@ class StocksDatasetInMem(Dataset):
         logger.info(f"all data label counts:\n{data_df['labels'].value_counts(normalize=True)}")
 
         if calc_means:
-            means["asset"] = data_df.mean(numeric_only=True)
-            stds["asset"]  = data_df.std(numeric_only=True)
+            means["asset"] = dict(data_df.mean(numeric_only=True))
+            stds["asset"]  = dict(data_df.std(numeric_only=True))
         preprocessor.normalise_df(data_df, means=means["asset"], stds=stds["asset"])
 
         num_nans = data_df.isna().sum().sum()
@@ -189,8 +189,8 @@ class StocksDatasetInMem(Dataset):
             vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h"])
     
             if calc_means:
-                means["vix"] = vix_df.mean(numeric_only=True)
-                stds["vix"]  = vix_df.std(numeric_only=True)
+                means["vix"] = dict(vix_df.mean(numeric_only=True))
+                stds["vix"]  = dict(vix_df.std(numeric_only=True))
     
             vix_df = vix_preprocessor.normalise_df(vix_df, means=means["vix"], stds=stds["vix"])
 
@@ -217,7 +217,7 @@ class StocksDatasetInMem(Dataset):
         num_nans = data_df.isna().sum().sum()
         assert num_nans == 0, f"Expected Number of NaNs in finalised data_df to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
 
-        return data_df, lengths, dict(means), dict(stds)
+        return data_df, lengths, means, stds
     
     @staticmethod
     def preprocess_ticker(ticker: str, exchange: str, start_date: str, end_date: str, 

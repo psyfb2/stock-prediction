@@ -77,7 +77,10 @@ class BasePreprocessor(ABC):
         # ------ ------ #
 
         # apply TI's
-        df = self.calc_features(df)[self.features_to_use]
+        df = self.calc_features(df)
+
+        # only keep features to use and ochlvt columns
+        df = df[[c for c in self.features_to_use + list("ochlvt") if c in df.columns]]
         
         # drop NaN values produced by TI's
         df = df.dropna().reset_index(drop=True)
