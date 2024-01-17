@@ -378,7 +378,7 @@ if __name__ == "__main__":
     # to keep the process running even after exiting the ssh session.    
 
     parser = ArgumentParser()
-    parser.add_argument("-c", "--config", default="train/configs/supervised_base_config.json", 
+    parser.add_argument("-c", "--config", default="train/configs/supervised_mlp_base_config.json", 
                         help="train config json file")
     
     args = parser.parse_args()
