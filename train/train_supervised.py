@@ -127,13 +127,20 @@ def main(train_config: dict):
     logger.info(f"Using device '{device}'")
 
     in_features = train_dataset.features.shape[-1]
-    # classifier = ClassificationTransformer(
-    #     seq_len=train_config["num_candles_to_stack"], in_features=in_features,
-    #     num_classes=2, d_model=model_cfg["d_model"], nhead=model_cfg["nhead"], num_encoder_layers=model_cfg["num_encoder_layers"],
-    #     dim_feedforward=model_cfg["dim_feedforward"], dropout=model_cfg["dropout"], layer_norm_eps=model_cfg["layer_norm_eps"],
-    #     norm_first=model_cfg["norm_first"]
-    # ).to(device)
-    classifier = MLP(seq_len=train_config["num_candles_to_stack"], in_features=in_features, num_classes=2).to(device)
+    if model_cfg["model_type"] == "classification_transformer":
+        classifier = ClassificationTransformer(
+            seq_len=train_config["num_candles_to_stack"], in_features=in_features,
+            num_classes=2, d_model=model_cfg["d_model"], nhead=model_cfg["nhead"], num_encoder_layers=model_cfg["num_encoder_layers"],
+            dim_feedforward=model_cfg["dim_feedforward"], dropout=model_cfg["dropout"], layer_norm_eps=model_cfg["layer_norm_eps"],
+            norm_first=model_cfg["norm_first"]
+        ).to(device)
+
+    elif model_cfg["model_type"] == "mlp":
+        classifier = MLP(dropout=model_cfg["dropout"], seq_len=train_config["num_candles_to_stack"], in_features=in_features, 
+                         num_classes=2, hidden_layers=model_cfg["hidden_layers"]).to(device)
+        
+    else:
+        raise ValueError(f"model_type '{model_cfg['model_type']}' is not recognised.")
     summary(classifier, input_size=(model_cfg["batch_size"], train_config["num_candles_to_stack"], in_features), device=device)
 
     # initialise loss function and optimizer
