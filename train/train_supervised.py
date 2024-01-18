@@ -52,21 +52,27 @@ def main(train_config: dict):
         datasets = np.load(train_config["data_npz_file"])
 
         train_dataset = StocksDatasetInMem(
-            tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
+            tickers=None, features_to_use=train_config["features_to_use"],
+            vix_features_to_use=train_config["vix_features_to_use"],
+            start_date=None, end_date=None, tp=None, tsl=None, 
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, features=datasets["train_X"], labels=datasets["train_y"], 
             lengths=datasets["train_lengths"]
         )
 
         val_dataset = StocksDatasetInMem(
-            tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
+            tickers=None, features_to_use=train_config["features_to_use"],
+            vix_features_to_use=train_config["vix_features_to_use"],
+            start_date=None, end_date=None, tp=None, tsl=None, 
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, features=datasets["val_X"], labels=datasets["val_y"], 
             lengths=datasets["val_lengths"]
         )
 
         test_dataset = StocksDatasetInMem(
-            tickers=None, start_date=None, end_date=None, tp=None, tsl=None, 
+            tickers=None, features_to_use=train_config["features_to_use"],
+            vix_features_to_use=train_config["vix_features_to_use"],
+            start_date=None, end_date=None, tp=None, tsl=None, 
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, features=datasets["test_X"], labels=datasets["test_y"], 
             lengths=datasets["test_lengths"]
