@@ -268,10 +268,12 @@ def eval_model(classifier: nn.Module, val_dataloader: DataLoader,
     #    - classification report using risky_thresh
     calc_optimal_threshold(test_dataloader, classifier, device, test_roc_path)
 
-    ys                 = np.zeros( (len(test_dataloader.dataset), ) )
-    preds_best_thresh  = np.zeros( (len(test_dataloader.dataset), ) )
-    preds_safe_thresh  = np.zeros( (len(test_dataloader.dataset), ) )
-    preds_risky_thresh = np.zeros( (len(test_dataloader.dataset), ) )
+    ys                  = np.zeros( (len(test_dataloader.dataset), ) )
+    preds_best_thresh   = np.zeros( (len(test_dataloader.dataset), ) )
+    preds_safe_thresh   = np.zeros( (len(test_dataloader.dataset), ) )
+    preds_safe_thresh2  = np.zeros( (len(test_dataloader.dataset), ) )
+    preds_risky_thresh  = np.zeros( (len(test_dataloader.dataset), ) )
+    preds_risky_thresh2 = np.zeros( (len(test_dataloader.dataset), ) )
     idx = 0
     classifier.eval()
     with torch.no_grad():
@@ -284,27 +286,39 @@ def eval_model(classifier: nn.Module, val_dataloader: DataLoader,
 
             batch_size = probs.size(dim=0)
 
-            ys[idx: idx + batch_size]                  = y.numpy(force=True)
-            preds_best_thresh[idx:  idx + batch_size]  = (probs > best_thresh).long().numpy(force=True)
-            preds_safe_thresh[idx:  idx + batch_size]  = (probs > safe_thresh).long().numpy(force=True)
-            preds_risky_thresh[idx: idx + batch_size]  = (probs > risky_thresh).long().numpy(force=True)
+            ys[                 idx: idx + batch_size]  = y.numpy(force=True)
+            preds_best_thresh[  idx: idx + batch_size]  = (probs > best_thresh ).long().numpy(force=True)
+            preds_safe_thresh[  idx: idx + batch_size]  = (probs > safe_thresh ).long().numpy(force=True)
+            preds_safe_thresh2[ idx: idx + batch_size]  = (probs > 0.75        ).long().numpy(force=True)
+            preds_risky_thresh[ idx: idx + batch_size]  = (probs > risky_thresh).long().numpy(force=True)
+            preds_risky_thresh2[idx: idx + batch_size]  = (probs > 0.25        ).long().numpy(force=True)
     
             idx += batch_size
     
     assert idx == len(test_dataloader.dataset), f"Expected final idx to be {len(test_dataloader.dataset)} not {idx}"
     
-    best_thresh_report  = classification_report(ys, preds_best_thresh,  target_names=["Don't Buy", "Buy"])
-    safe_thresh_report  = classification_report(ys, preds_safe_thresh,  target_names=["Don't Buy", "Buy"])
-    risky_thresh_report = classification_report(ys, preds_risky_thresh, target_names=["Don't Buy", "Buy"])
+    best_thresh_report   = classification_report(ys, preds_best_thresh,   target_names=["Don't Buy", "Buy"])
+    safe_thresh_report   = classification_report(ys, preds_safe_thresh,   target_names=["Don't Buy", "Buy"])
+    safe_thresh_report2  = classification_report(ys, preds_safe_thresh2,  target_names=["Don't Buy", "Buy"])
+    risky_thresh_report  = classification_report(ys, preds_risky_thresh,  target_names=["Don't Buy", "Buy"])
+    risky_thresh_report2 = classification_report(ys, preds_risky_thresh2, target_names=["Don't Buy", "Buy"])
 
     with open(classification_report_path, mode="w") as f:
         f.writelines([
             f"best_thresh = {best_thresh}\n",
             "best_thresh_report:", best_thresh_report,
+
             f"\nsafe_thresh = {safe_thresh}\n",
             "safe_thresh_report:", safe_thresh_report,
+
+            f"\nsafe_thresh2 = 0.75\n",
+            "safe_thresh_report:", safe_thresh_report2,
+
             f"\nrisky_thresh = {risky_thresh}\n",
-            "risky_thresh_report", risky_thresh_report
+            "risky_thresh_report", risky_thresh_report,
+
+            f"\nrisky_thresh2 = 0.25\n",
+            "risky_thresh_report", risky_thresh_report2
         ])
 
 

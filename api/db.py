@@ -19,22 +19,21 @@ logger.info("Successfully connected to MongoDB!")
 api_db = client.get_database("sm_api_db")
 
 
-def insert_probability_request(ticker: str, probability: float):
+def insert_probability_request(ticker: str, exchange_name: str, probability: float):
     """ Insert request info from "/probability/{ticker}" endpoint into DB.
     Uses TTL index so that the inserted document will be automatically removed
     15 minutes after the next market close date. This is to automatically
     clear up the DB and so that it can be used as a cache.
 
     Args:
-        ticker (str): _description_
-        probability (float): _description_
+        ticker (str): ticker symbol (e.g. 'AAPL')
+        exchange_name (str): exchange which ticker is listen on (e.g. 'NASDAQ')
+        probability (float): bullish probability for ticker
     """
-    logger.info(f"Caching result for ticker '{ticker}' and probability {probability}")
-    exchange_name = get_exchange(ticker)
+    logger.info(f"Caching result for ticker '{ticker}' with exchange '{exchange_name}' and probability {probability}")
     
     try:
         exchange = mcal.get_calendar(exchange_name)
-        logger.info(f"Using exchange '{exchange_name}' for ticker '{ticker}'")
     except RuntimeError as ex:
         logger.exception(f"Unknown exchange '{exchange_name}'. Will skip saving to cache.")
         return
@@ -70,7 +69,7 @@ def get_probability_request(ticker: str) -> Optional[dict]:
     which was inserted into DB. Use this as a retrieve from cache function.
 
     Args:
-        ticker (str): _description_
+        ticker (str): ticker symbol (e.g. 'AAPL')
 
     Returns:
         Optional[dict]: document with keys "createdAt", "expiresAt", "ticker", "probability".

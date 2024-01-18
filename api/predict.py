@@ -1,14 +1,21 @@
 import os
 import json
+import logging
+from datetime import timedelta
 
 import torch
 
+
 from models.classification_transformer import ClassificationTransformer
 from data_preprocessing.asset_preprocessor import AssetPreprocessor
+from data_preprocessing.vix_preprocessor import VixPreprocessor
+from data_collection.historical_data import get_last_full_trading_day
 from data_preprocessing.dataset import StocksDatasetInMem
 from models.mlp import MLP
 from utils.get_device import get_device
 
+
+logger = logging.getLogger(__name__)
 
 with open(os.environ["TRAIN_CONFIG_PATH"]) as json_file:
     train_config = json.load(json_file)
@@ -46,18 +53,45 @@ asset_preprocessor = AssetPreprocessor(
     features_to_use=train_config["features_to_use"], 
     candle_size=train_config["candle_size"]
 )
+vix_preprocessor = VixPreprocessor(
+    features_to_use=train_config["vix_features_to_use"]
+)
 
 
-def predict(ticker: str) -> float:
+def predict(ticker: str, exchange_name: str) -> float:
     """ Predict bullish probability using model.
 
     Args:
-        ticker (str): ticker for which to predict bullish probability.
+        ticker (str): ticker for which to predict bullish probability (e.g. 'AAPL').
+        exchange_name (str): name of exchange for ticker (e.g. 'NASDAQ')
 
     Returns:
         float: bullish probability.
     """
-    # load data for ticker
-    StocksDatasetInMem.preprocess_ticker(
-        ticker=ticker, exchange='', start_date=""
+    try:
+        start_date = get_last_full_trading_day(exchange_name)
+    except RuntimeError as ex:
+        logger.exception(f"Exchange '{exchange_name}' is not recognised. Will assume NASDAQ schedule.")
+        start_date = get_last_full_trading_day("NASDAQ")
+        
+    # load preprocessed data for ticker
+    df = StocksDatasetInMem.preprocess_ticker(
+        ticker=ticker, 
+        exchange=exchange_name, 
+        start_date=start_date.strftime("%Y-%m-%d"),
+        end_date=(start_date + timedelta(days=1)).strftime("%Y-%m-%d"), 
+        preprocessor=asset_preprocessor,
+        num_candles_to_stack=train_config["num_candles_to_stack"],
+        candle_size=train_config["candle_size"],
+        raise_invalid_data_exception=True
     )
+
+    # normalise df
+    asset_preprocessor.normalise_df(
+        df, 
+        means=normalisation_info["means"]["asset"], 
+        stds=normalisation_info["stds"]["asset"]
+    )
+
+
+

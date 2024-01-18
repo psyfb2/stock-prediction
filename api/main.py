@@ -5,8 +5,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.db import insert_probability_request, get_probability_request
+from data_collection.historical_data import get_exchange
 
 import random
+
+
 
 app = FastAPI()
 
@@ -27,6 +30,8 @@ def get_probability(ticker: str):
     cache_result = get_probability_request(ticker)
     if cache_result:
         return {"probability": cache_result["probability"], "ticker": ticker}
+    
+    exchange_name = get_exchange(ticker)
     
 
     
