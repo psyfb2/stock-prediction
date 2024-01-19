@@ -29,6 +29,7 @@ Using best threshold = 0.40, which calculated using validation ROC:
 |    Weighted Avg     |   0.64    |  0.62  | 0.61 |  39679  |
 
 Test Set ROC Curve:
+
 ![roc_curve](https://github.com/psyfb2/stock-prediction/blob/main/test_roc.png?raw=true)
 
 # Lessons Learnt
