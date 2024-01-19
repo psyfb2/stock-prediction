@@ -15,6 +15,8 @@ let text = document.querySelector(".text");
 let actionText = document.querySelector(".action");
 let errorText = document.querySelector(".error_text");
 let tickerInput = document.getElementById("ticker_input");
+let waveLoader = document.getElementById("wave_loader");
+waveLoader.style.display = "none";
 canvas = document.getElementById("canvas");
 ctx = canvas.getContext("2d");
 
@@ -36,8 +38,11 @@ document.getElementById("ticker_button").addEventListener(
       return;
     }
 
+    waveLoader.style.display = "flex";
+
     fetch(apiUrl + "/probability/" + ticker)
       .then((response) => {
+        waveLoader.style.display = "none";
         if (!response.ok) {
           return Promise.reject(response);
         }

@@ -65,7 +65,9 @@ def get_probability(ticker: str):
             logger.exception(f"Failed predict probability for ticker '{ticker}'")
             raise HTTPException(
                 status_code=422, detail=f"Failed to predict probability for '{ticker}'. "
-                f"Ensure the ticker is correct, is not delisted and exists on yahoo finance. "
+                f"Ensure the ticker is correct, is not delisted and exists on Yahoo Finance. "
+                f"Please enter the ticker as it is shown on Yahoo Finance "
+                f"(e.g. for Centamin ticker would be 'CEY.L' not 'CEY')"
                 f"Exact exception: {repr(ex)}"
             )
         except Exception as ex:

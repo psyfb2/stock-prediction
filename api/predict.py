@@ -85,7 +85,7 @@ def predict(ticker: str, exchange_name: str) -> float:
         preprocessor=asset_preprocessor,
         num_candles_to_stack=train_config["num_candles_to_stack"],
         candle_size=train_config["candle_size"],
-        raise_invalid_data_exception=True,
+        raise_invalid_data_exception=False,
         tp=None,
         tsl=None
     )

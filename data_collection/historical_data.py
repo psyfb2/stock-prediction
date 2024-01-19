@@ -152,7 +152,7 @@ def get_historical_data(symbol: str, start_date: str, end_date: str,
         if raise_invalid_data_exception:
             raise ex
         logger.warning(f"Invalid data for ticker '{symbol}', with start_date='{start_date}', "
-                       f"end_date='{end_date}', candle_size='{candle_size}'\n{ex}")
+                       f"end_date='{end_date}', candle_size='{candle_size}', exception: {ex}")
 
     return df
 
