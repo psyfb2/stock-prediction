@@ -1,6 +1,6 @@
 # Stock Market Prediction
 
-Source code for the stock market prediction tool hosted at []. The aim was to create a tool which gives a buy rating between 0-100 for any given stock. To this end, Machine Learning was used to make the predictions. Concretely, the problem was posed as a binary classification problem where each candle on the daily chart of over 500 stocks (mainly S&P 500 stocks) was classified according to:
+Source code for the stock market prediction tool hosted [here](https://sm-api-1y5n.onrender.com/). The aim was to create a tool which gives a buy rating between 0-100 for any given stock. To this end, Machine Learning was used to make the predictions. Concretely, the problem was posed as a binary classification problem where each candle on the daily chart of over 500 stocks (mainly S&P 500 stocks) was classified according to:
 
 - label 1: if a Take-Profit order of 6% is hit before a Trailing-Stop-Loss order of 6% relative to the next candles open price.
 - label 0: If Trailing-Stop-Loss order is hit first.
@@ -18,7 +18,7 @@ For each model hyperparameters were tuned on the validation set and the best thr
 
 ## Test Set Results
 
-Using best threshold = 0.40, which calculated using validation ROC:
+Using best threshold = 0.40, which was calculated using validation ROC:
 
 |                     | Precision | Recall |  F1  | Support |
 | :-----------------: | :-------: | :----: | :--: | :-----: |
