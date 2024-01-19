@@ -49,6 +49,8 @@ package.nls.*.json
 l10n/
 # project specific files
 .env
+api/logs/*
+!api/logs/.gitkeep
 data_collection/file_cache/*
 !data_collection/file_cache/.gitkeep
 training_artifacts/supervised_learning/*

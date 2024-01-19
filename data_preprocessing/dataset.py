@@ -184,32 +184,14 @@ class StocksDatasetInMem(Dataset):
         # add VIX data as broad market sentiment indicators
         if vix_features_to_use:
             vix_preprocessor = VixPreprocessor(features_to_use=vix_features_to_use)
-
-            vix_df = get_vix_daily_data("VIX")
-            vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h"])
-    
-            if calc_means:
-                means["vix"] = dict(vix_df.mean(numeric_only=True))
-                stds["vix"]  = dict(vix_df.std(numeric_only=True))
-    
-            vix_preprocessor.normalise_df(vix_df, means=means["vix"], stds=stds["vix"])
-
-            # fill VIX df (might be missing some days, just fill with previous value)
-            last_idx = 0
-            vix_df_filled = pd.DataFrame(columns=list(vix_df.columns))
-            for date in daterange(vix_df["t"].iloc[0], vix_df["t"].iloc[-1] + timedelta(days=1)):
-                if date == vix_df["t"].iloc[last_idx]:
-                    vix_df_filled = pd.concat([vix_df_filled, vix_df.iloc[last_idx:last_idx + 1]], ignore_index=True)
-                    last_idx += 1
-                else:
-                    row = vix_df.iloc[last_idx - 1:last_idx].copy()
-                    row["t"] = date
-                    vix_df_filled = pd.concat([vix_df_filled, row], ignore_index=True)
-            vix_df = vix_df_filled
-
-            unmerged_data_df = data_df
-            data_df = data_df.merge(vix_df, on="t", how="left")
-            assert all(unmerged_data_df["t"] == data_df["t"]), f"Merging has not preserved order of rows!"
+            data_df = cls.merge_vix_data(
+                vix_preprocessor=vix_preprocessor, 
+                data_df=data_df,
+                calc_means=calc_means,
+                means=means,
+                stds=stds,
+                num_candles_to_stack=num_candles_to_stack
+            )
 
         assert len(data_df) == sum(lengths), f"length of data_df is {len(data_df)}, but expected it to be {sum(lengths)}"
         assert ( (data_df["labels"] == 0.0) | (data_df["labels"] == 1.0) ).all()
@@ -218,6 +200,66 @@ class StocksDatasetInMem(Dataset):
         assert num_nans == 0, f"Expected Number of NaNs in finalised data_df to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
 
         return data_df, lengths, means, stds
+    
+    @staticmethod
+    def merge_vix_data(vix_preprocessor: VixPreprocessor, 
+                       data_df: pd.DataFrame,
+                       calc_means: bool, 
+                       means: Dict[str, Dict[str, float]],
+                       stds: Dict[str, Dict[str, float]],
+                       num_candles_to_stack: int
+                       ) -> pd.DataFrame:
+        """ Merge preprocessed df with VIX data
+
+        Args:
+            vix_preprocessor (VixPreprocessor): vix preprocessor
+            data_df (pd.DataFrame): preprocessed dataframe. must contain 't' column
+                at a daily interval.
+            calc_means (bool): calculate means? If False expects means["vix"]
+                and stds["vix"] to contain means and stds. otherwise will calculate
+                these and add key "vix" to means and stds.
+            means (Dict[str, Dict[str, float]]): means dict
+            stds (Dict[str, Dict[str, float]]): stds dict
+            num_candles_to_stack (int): number of candles to stack. 
+                Used to cut VIX df to only preprocess the required rows.
+
+        Returns:
+            pd.DataFrame: VIX data merged with data_df. Columns of data_df
+                are kept in order.
+        """
+        vix_df = get_vix_daily_data("VIX")
+
+        adjusted_start_date = vix_preprocessor.adjust_start_date(
+            data_df["t"].iloc[0].to_pydatetime(), num_candles_to_stack
+        ).strftime("%Y-%m-%d")
+        vix_df = vix_df[vix_df["t"] >= adjusted_start_date].reset_index(drop=True)
+
+        vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h"])
+
+        if calc_means:
+            means["vix"] = dict(vix_df.mean(numeric_only=True))
+            stds["vix"]  = dict(vix_df.std(numeric_only=True))
+
+        vix_preprocessor.normalise_df(vix_df, means=means["vix"], stds=stds["vix"])
+
+        # fill VIX df (might be missing some days, just fill with previous value)
+        last_idx = 0
+        vix_df_filled = pd.DataFrame(columns=list(vix_df.columns))
+        for date in daterange(vix_df["t"].iloc[0], vix_df["t"].iloc[-1] + timedelta(days=1)):
+            if date == vix_df["t"].iloc[last_idx]:
+                vix_df_filled = pd.concat([vix_df_filled, vix_df.iloc[last_idx:last_idx + 1]], ignore_index=True)
+                last_idx += 1
+            else:
+                row = vix_df.iloc[last_idx - 1:last_idx].copy()
+                row["t"] = date
+                vix_df_filled = pd.concat([vix_df_filled, row], ignore_index=True)
+        vix_df = vix_df_filled
+
+        unmerged_data_df = data_df
+        data_df = data_df.merge(vix_df, on="t", how="left")
+        assert all(unmerged_data_df["t"] == data_df["t"]), f"Merging has not preserved order of rows!"
+
+        return data_df
     
     @staticmethod
     def preprocess_ticker(ticker: str, exchange: str, start_date: str, end_date: str, 
@@ -261,7 +303,7 @@ class StocksDatasetInMem(Dataset):
             raise ValueError(f"Not enough data, df has 0 rows after start_date '{start_date}', will skip this ticker")
 
         start_date_idx = df_after_start_date.index[0]
-        if start_date_idx >= num_candles_to_stack - 1:
+        if start_date_idx > num_candles_to_stack - 1:
             # cut left part of df which goes before start_date even after stacking
             df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
         else:

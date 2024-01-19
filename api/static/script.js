@@ -1,20 +1,8 @@
-const sell_threshold = 0.25;
-const j_threshold = 0.5;
-const j_boundary = 0.1;
-const buy_threshold = 0.75;
+const sell_threshold = 0.2;
+const j_threshold = 0.35;
+const j_boundary = 0.05;
+const buy_threshold = 0.6;
 const apiUrl = "http://localhost:8000";
-
-document.querySelector(".sell_threshold").innerText =
-  "Sell Threshold = " + sell_threshold.toString();
-
-document.querySelector(".neutral_threshold").innerText =
-  "Neutral Threshold = " + (j_threshold - j_boundary).toString();
-
-document.querySelector(".buy_threshold").innerText =
-  "Buy Threshold = " + (j_threshold + j_boundary).toString();
-
-document.querySelector(".strong_buy_threshold").innerText =
-  "Strong Buy Threshold = " + buy_threshold.toString();
 
 // change this Value to set the percentage
 let totalRot = ((80 / 100) * 180 * Math.PI) / 180;
@@ -51,17 +39,23 @@ document.getElementById("ticker_button").addEventListener(
     fetch(apiUrl + "/probability/" + ticker)
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`${response.status}: ${response.statusText}`);
+          return Promise.reject(response);
         }
         return response.json();
       })
       .then((data) => {
-        totalRot = ((data.probability / 100) * 180 * Math.PI) / 180;
+        totalRot = (data.probability * 180 * Math.PI) / 180;
         animationID = requestAnimationFrame(animate);
         setTimeout(animationID, 1500);
       })
-      .catch((error) => {
-        errorText.innerText = `Error: ${error}`;
+      .catch((response) => {
+        try {
+          response.json().then((json) => {
+            errorText.innerText = json.detail;
+          });
+        } catch (err) {
+          errorText.innerText = `Failed to load data for '${ticker}'.`;
+        }
       });
   },
   false

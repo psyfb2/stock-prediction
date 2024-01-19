@@ -141,11 +141,20 @@ input::placeholder {
 .buy_threshold,
 .sell_threshold,
 .strong_buy_threshold,
-.neutral_threshold {
+.neutral_threshold,
+.best_threshold,
+.best_threshold_text {
   color: white;
   font-weight: 200;
   font-size: 14px;
   text-align: center;
+  max-width: 90%;
+  padding: 5px;
+  margin: auto;
+}
+
+.best_threshold_text {
+  text-align: left;
 }
 
 .canvas-wrapper {
@@ -157,4 +166,8 @@ canvas {
   margin: auto;
   display: block;
   width: 400px;
+}
+
+b {
+  font-weight: bold;
 }

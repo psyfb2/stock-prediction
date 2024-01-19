@@ -34,7 +34,7 @@
           This tool will give you a bullish rating for a stock as a percentage.
           A rating of 0% would be very bearish and 100% would be very bullish.
           Concretely, the percentage represents the probability that a
-          Take-Profit of 6% is hit before a Trailing-Stop-Loss of 4% is hit,
+          Take-Profit of 6% is hit before a Trailing-Stop-Loss of 6% is hit,
           relative to the current days open price. For more information checkout
           the github README for this project
           <a href="https://github.com/psyfb2/stock-prediction">here</a>.
@@ -80,10 +80,20 @@
       <p class="text">0 %</p>
       <p class="action"></p>
       <p class="error_text"></p>
-      <p class="sell_threshold"></p>
-      <p class="neutral_threshold"></p>
-      <p class="buy_threshold"></p>
-      <p class="strong_buy_threshold"></p>
+      <p class="best_threshold">Recommended Buy Threshold: <b>40%</b></p>
+      <p class="best_threshold_text">
+        The recommended buy threshold was calculated by maximizing TPR - FPR on
+        the validation set. On the test set this threshold achieved 62%
+        accuracy, with a precision of 55% and recall of 75% on the buy class.
+        The test set dataset was slightly imbalanced with the buy class
+        representing 45% of the samples. If that sounds like mandarin, then
+        essentially if the bullish rating is above 40% and one was to place a
+        Take-Profit of 6% and a Trailing-Stop-Loss of 6%, the Take-Profit would
+        be hit approximately 55% of the time. On the other hand, when the
+        bullish rating is below 40%, approximately 25% of the time the
+        Take-Profit is hit, so the model is able to capture/recall 75% of the
+        Take-Profit hits.
+      </p>
     </div>
   </body>
   <script src="script.js"></script>

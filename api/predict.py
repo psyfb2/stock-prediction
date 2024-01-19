@@ -3,13 +3,13 @@ import json
 import logging
 from datetime import timedelta
 
+import numpy as np
 import torch
-
 
 from models.classification_transformer import ClassificationTransformer
 from data_preprocessing.asset_preprocessor import AssetPreprocessor
 from data_preprocessing.vix_preprocessor import VixPreprocessor
-from data_collection.historical_data import get_last_full_trading_day
+from data_collection.historical_data import get_last_full_trading_day, get_vix_daily_data
 from data_preprocessing.dataset import StocksDatasetInMem
 from models.mlp import MLP
 from utils.get_device import get_device
@@ -17,14 +17,16 @@ from utils.get_device import get_device
 
 logger = logging.getLogger(__name__)
 
-with open(os.environ["TRAIN_CONFIG_PATH"]) as json_file:
+# model file dir should contain config.json, normalisation_info.json and model.pth files
+MODEL_FILES_DIR = os.environ["MODEL_FILES_DIR"]
+
+with open(MODEL_FILES_DIR + os.sep + "config.json") as json_file:
     train_config = json.load(json_file)
 model_cfg = train_config["model_config"]
 
-with open(os.environ["NORMALISATION_INFO_PATH"]) as json_file:
+with open(MODEL_FILES_DIR + os.sep + "normalisation_info.json") as json_file:
     normalisation_info = json.load(json_file)
 
-MODEL_PATH = os.environ["CLASSIFIER_MODEL_PATH"]
 
 # load model
 device = get_device()
@@ -45,7 +47,7 @@ elif model_cfg["model_type"] == "mlp":
     
 else:
     raise ValueError(f"model_type '{model_cfg['model_type']}' is not recognised.")
-classifier.load_state_dict(torch.load(MODEL_PATH))
+classifier.load_state_dict(torch.load(MODEL_FILES_DIR + os.sep + "model.pth", map_location=device))
 classifier.eval()
 
 # initialise preprocessors
@@ -83,15 +85,55 @@ def predict(ticker: str, exchange_name: str) -> float:
         preprocessor=asset_preprocessor,
         num_candles_to_stack=train_config["num_candles_to_stack"],
         candle_size=train_config["candle_size"],
-        raise_invalid_data_exception=True
+        raise_invalid_data_exception=True,
+        tp=None,
+        tsl=None
     )
 
     # normalise df
     asset_preprocessor.normalise_df(
-        df, 
+        df=df, 
         means=normalisation_info["means"]["asset"], 
         stds=normalisation_info["stds"]["asset"]
     )
 
+    # merge VIX data
+    if train_config["vix_features_to_use"]:
+        df = StocksDatasetInMem.merge_vix_data(
+            vix_preprocessor=vix_preprocessor, 
+            data_df=df,
+            calc_means=False,
+            means=normalisation_info["means"],
+            stds=normalisation_info["stds"],
+            num_candles_to_stack=train_config["num_candles_to_stack"]
+        )
 
+        # sometimes VIX data lags behind by one day (CBOE update VIX one day late)
+        # if this is case vix features in df on last candle will be None, fix this by 
+        # replace those NaNs with last value
+        num_nans = df.isna().sum().sum()
+        if num_nans != 0:
+            logger.warning(f"Preprocessed df has NaNs! This is most likely because the last day of VIX data hasn't been uploaded yet. "
+                           f"NaNs per col:\n{dict(df.isna().sum())}\ndf:\n{df}")
+            df = df.fillna(method="ffill")
+            logger.warning(f"Filled df:\n{df}")
+        
+    num_nans = df.isna().sum().sum()
+    assert num_nans == 0, f"Expected Number of NaNs in df to be 0, but was {num_nans}. NaNs per col:\n{dict(df.isna().sum())}"
 
+    # X has shape (1, num_candles_to_stack, D)
+    X = df.drop(columns=list("toclhv")).to_numpy(dtype=np.float32)
+    X = X[np.newaxis, -train_config["num_candles_to_stack"]:, :]
+    X = torch.from_numpy(X)
+
+    # use model to predict bullish probability
+    with torch.no_grad():
+        X = X.to(device) # (1, num_candles_to_stack, D)
+
+        logits = classifier(X)  # (1, 2)
+
+        probs  = torch.nn.functional.softmax(logits, dim=1) # (1, 2)
+        probs  = probs[:, 1]  # (1, )
+        probs  = probs.item()
+
+    return probs

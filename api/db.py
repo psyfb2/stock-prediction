@@ -7,8 +7,6 @@ import pandas_market_calendars as mcal
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 
-from data_collection.historical_data import get_exchange
-
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +58,7 @@ def insert_probability_request(ticker: str, exchange_name: str, probability: flo
         "ticker": ticker,
         "probability": probability
     }
-    logger.info(f"Inserting document into 'probability_cache' collection:\n{document}")
+    logger.info(f"Inserting document into 'probability_cache' collection: {document}")
     api_db["probability_cache"].insert_one(document)
 
 
