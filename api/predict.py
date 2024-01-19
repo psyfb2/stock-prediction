@@ -18,13 +18,13 @@ from utils.get_device import get_device
 logger = logging.getLogger(__name__)
 
 # model file dir should contain config.json, normalisation_info.json and model.pth files
-MODEL_FILES_DIR = os.environ["MODEL_FILES_DIR"]
+MODEL_FILES_DIR = os.environ["MODEL_FILES_DIR"] + "/"
 
-with open(MODEL_FILES_DIR + os.sep + "config.json") as json_file:
+with open(MODEL_FILES_DIR +  "config.json") as json_file:
     train_config = json.load(json_file)
 model_cfg = train_config["model_config"]
 
-with open(MODEL_FILES_DIR + os.sep + "normalisation_info.json") as json_file:
+with open(MODEL_FILES_DIR + "normalisation_info.json") as json_file:
     normalisation_info = json.load(json_file)
 
 
@@ -47,7 +47,7 @@ elif model_cfg["model_type"] == "mlp":
     
 else:
     raise ValueError(f"model_type '{model_cfg['model_type']}' is not recognised.")
-classifier.load_state_dict(torch.load(MODEL_FILES_DIR + os.sep + "model.pth", map_location=device))
+classifier.load_state_dict(torch.load(MODEL_FILES_DIR + "model.pth", map_location=device))
 classifier.eval()
 
 # initialise preprocessors

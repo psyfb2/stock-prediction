@@ -14,6 +14,7 @@ from api.db import insert_probability_request, get_probability_request
 from api.predict import predict
 from data_collection.historical_data import get_exchange
 
+# run locally using uvicorn api.main:app --reload from project root directory
 
 app = FastAPI()
 
@@ -42,7 +43,7 @@ def set_up_logging(log_filename: str):
     logger.addHandler(file_handler)
 
 
-set_up_logging("logs" + os.sep + "api.log")
+set_up_logging("api" + os.sep + "logs" + os.sep + "api.log")
 logger = logging.getLogger(__name__)
 
 
@@ -84,4 +85,4 @@ def get_probability(ticker: str):
     return res
 
 
-app.mount("/", StaticFiles(directory="static",html = True), name="static")
+app.mount("/", StaticFiles(directory="api/static", html=True), name="static")

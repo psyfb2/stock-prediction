@@ -57,10 +57,10 @@ python -m train.train_supervised  -c <path_to_train_config>
 
 You can customise the default train config in train/configs to change the stocks to use, features to use, model hyperparameters, etc. A directory will be created within training_artifacts for this training which stores logs, saved model, etc. There is a directory called best_model which is the train directory created for the best model which was tested above.
 
-To run the api locally run the following within the api directory:
+To run the following command:
 
 ```
-uvicorn main:app --reload
+uvicorn api.main:app --reload
 ```
 
 The environment variable 'MODEL_FILES_DIR' must be set. This should point to the directory which was created during training. Also the environment variable 'MONGO_DB_URI' should be set to your Mongo DB URI. The Mongo DB should have a database with the name 'sm_api_db' and collection 'probability_cache'. The collection 'probability_cache' needs to have a TTL index named 'expiresAt' with expiresAfterSeconds=0.
