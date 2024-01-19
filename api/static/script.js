@@ -2,7 +2,7 @@ const sell_threshold = 0.2;
 const j_threshold = 0.35;
 const j_boundary = 0.05;
 const buy_threshold = 0.6;
-const apiUrl = "http://localhost:8000";
+const apiUrl = window.location.href;
 
 // change this Value to set the percentage
 let totalRot = ((80 / 100) * 180 * Math.PI) / 180;
@@ -40,7 +40,7 @@ document.getElementById("ticker_button").addEventListener(
 
     waveLoader.style.display = "flex";
 
-    fetch(apiUrl + "/probability/" + ticker)
+    fetch(apiUrl + "probability/" + ticker)
       .then((response) => {
         waveLoader.style.display = "none";
         if (!response.ok) {
