@@ -57,7 +57,7 @@ python -m train.train_supervised  -c <path_to_train_config>
 
 You can customise the default train config in train/configs to change the stocks to use, features to use, model hyperparameters, etc. A directory will be created within training_artifacts for this training which stores logs, saved model, etc. There is a directory called best_model which is the train directory created for the best model which was tested above.
 
-To run the following command:
+To run the api, run following command:
 
 ```
 uvicorn api.main:app --reload
