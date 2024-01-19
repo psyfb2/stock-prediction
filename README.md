@@ -30,7 +30,7 @@ Using best threshold = 0.40, which calculated using validation ROC:
 
 Test Set ROC Curve:
 
-![roc_curve](https://github.com/psyfb2/stock-prediction/blob/main/test_roc.png?raw=true)
+![roc_curve](https://github.com/psyfb2/stock-prediction/blob/main/best_model/test_roc.png?raw=true)
 
 # Lessons Learnt
 
@@ -55,7 +55,7 @@ To train a model locally run:
 python -m train.train_supervised  -c <path_to_train_config>
 ```
 
-You can customise the default train config in train/configs to change the stocks to use, features to use, model hyperparameters, etc. A directory will be created within training_artifacts for this training which stores logs, saved model, etc.
+You can customise the default train config in train/configs to change the stocks to use, features to use, model hyperparameters, etc. A directory will be created within training_artifacts for this training which stores logs, saved model, etc. There is a directory called best_model which is the train directory created for the best model which was tested above.
 
 To run the api locally run the following within the api directory:
 

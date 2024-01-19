@@ -1,0 +1,49 @@
+best_thresh = 0.4047106206417084
+best_thresh_report:              precision    recall  f1-score   support
+
+   Don't Buy       0.72      0.51      0.60     22170
+         Buy       0.55      0.75      0.63     17509
+
+    accuracy                           0.62     39679
+   macro avg       0.63      0.63      0.61     39679
+weighted avg       0.64      0.62      0.61     39679
+
+safe_thresh = 0.6685904860496521
+safe_thresh_report:              precision    recall  f1-score   support
+
+   Don't Buy       0.57      0.89      0.69     22170
+         Buy       0.49      0.13      0.21     17509
+
+    accuracy                           0.56     39679
+   macro avg       0.53      0.51      0.45     39679
+weighted avg       0.53      0.56      0.48     39679
+
+safe_thresh2 = 0.75
+safe_thresh_report:              precision    recall  f1-score   support
+
+   Don't Buy       0.56      0.97      0.71     22170
+         Buy       0.48      0.03      0.06     17509
+
+    accuracy                           0.56     39679
+   macro avg       0.52      0.50      0.38     39679
+weighted avg       0.52      0.56      0.42     39679
+
+risky_thresh = 0.0938175767660141
+risky_thresh_report              precision    recall  f1-score   support
+
+   Don't Buy       1.00      0.00      0.00     22170
+         Buy       0.44      1.00      0.61     17509
+
+    accuracy                           0.44     39679
+   macro avg       0.72      0.50      0.31     39679
+weighted avg       0.75      0.44      0.27     39679
+
+risky_thresh2 = 0.25
+risky_thresh_report              precision    recall  f1-score   support
+
+   Don't Buy       0.87      0.20      0.33     22170
+         Buy       0.49      0.96      0.65     17509
+
+    accuracy                           0.54     39679
+   macro avg       0.68      0.58      0.49     39679
+weighted avg       0.70      0.54      0.47     39679
