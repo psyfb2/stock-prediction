@@ -30,7 +30,7 @@ Using best threshold = 0.40, which calculated using validation ROC:
 
 Test Set ROC Curve:
 
-![roc_curve](https://github.com/psyfb2/stock-prediction/blob/main/best_model/test_ROC.png?raw=true)
+![roc_curve](https://github.com/psyfb2/stock-prediction/blob/main/best_model/test_roc.png?raw=true)
 
 # Lessons Learnt
 
