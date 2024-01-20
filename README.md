@@ -34,7 +34,7 @@ Test Set ROC Curve:
 
 # Lessons Learnt
 
-According to the Efficient Market Hypothesis and Random Walk Hypothesis, past stock prices have no effect on future stock prices, essentially technical analysis is useless. Others would have you believe that stock prices follow predictable patterns due to them being a function of human phycology.
+According to the Efficient Market Hypothesis and Random Walk Hypothesis, past stock prices have no effect on future stock prices, essentially technical analysis is useless. Others would have you believe that stock prices follow predictable patterns due to them being a function of human psychology.
 
 The truth seems to be somewhere in the middle. The trained ML model was able to achieve 62% accuracy on the test set. However, if stock prices were truly random then one would expect the accuracy to be around 55% (55% of the test-set samples had label 0). Also as can be seen by the test-set ROC, the ML model outperforms random predictions (shown by the dotted blue line). Of-course the difference is not much, but this seems to suggest for the most part stock prices are random but their is some signal and predictability there.
 
