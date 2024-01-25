@@ -1,25 +1,5 @@
-best_thresh = 0.4047106206417084
-best_thresh_report:              precision    recall  f1-score   support
-
-   Don't Buy       0.72      0.51      0.60     22170
-         Buy       0.55      0.75      0.63     17509
-
-    accuracy                           0.62     39679
-   macro avg       0.63      0.63      0.61     39679
-weighted avg       0.64      0.62      0.61     39679
-
-safe_thresh = 0.6685904860496521
-safe_thresh_report:              precision    recall  f1-score   support
-
-   Don't Buy       0.57      0.89      0.69     22170
-         Buy       0.49      0.13      0.21     17509
-
-    accuracy                           0.56     39679
-   macro avg       0.53      0.51      0.45     39679
-weighted avg       0.53      0.56      0.48     39679
-
-safe_thresh2 = 0.75
-safe_thresh_report:              precision    recall  f1-score   support
+thresh1 = 0.75
+               precision    recall  f1-score   support
 
    Don't Buy       0.56      0.97      0.71     22170
          Buy       0.48      0.03      0.06     17509
@@ -28,8 +8,97 @@ safe_thresh_report:              precision    recall  f1-score   support
    macro avg       0.52      0.50      0.38     39679
 weighted avg       0.52      0.56      0.42     39679
 
-risky_thresh = 0.0938175767660141
-risky_thresh_report              precision    recall  f1-score   support
+
+thresh2 (max tpr - 2 * fpr) = 0.6685904860496521
+               precision    recall  f1-score   support
+
+   Don't Buy       0.57      0.89      0.69     22170
+         Buy       0.49      0.13      0.21     17509
+
+    accuracy                           0.56     39679
+   macro avg       0.53      0.51      0.45     39679
+weighted avg       0.53      0.56      0.48     39679
+
+
+thresh3 = 0.55
+               precision    recall  f1-score   support
+
+   Don't Buy       0.63      0.71      0.67     22170
+         Buy       0.56      0.47      0.51     17509
+
+    accuracy                           0.61     39679
+   macro avg       0.60      0.59      0.59     39679
+weighted avg       0.60      0.61      0.60     39679
+
+
+thresh4 = 0.5
+               precision    recall  f1-score   support
+
+   Don't Buy       0.66      0.64      0.65     22170
+         Buy       0.56      0.58      0.57     17509
+
+    accuracy                           0.61     39679
+   macro avg       0.61      0.61      0.61     39679
+weighted avg       0.61      0.61      0.61     39679
+
+
+thresh5 = 0.45
+               precision    recall  f1-score   support
+
+   Don't Buy       0.69      0.57      0.63     22170
+         Buy       0.55      0.67      0.60     17509
+
+    accuracy                           0.62     39679
+   macro avg       0.62      0.62      0.62     39679
+weighted avg       0.63      0.62      0.62     39679
+
+
+thresh6 (max tpr - fpr) = 0.4047106206417084
+               precision    recall  f1-score   support
+
+   Don't Buy       0.72      0.51      0.60     22170
+         Buy       0.55      0.75      0.63     17509
+
+    accuracy                           0.62     39679
+   macro avg       0.63      0.63      0.61     39679
+weighted avg       0.64      0.62      0.61     39679
+
+
+thresh7 = 0.35
+               precision    recall  f1-score   support
+
+   Don't Buy       0.79      0.41      0.54     22170
+         Buy       0.54      0.86      0.66     17509
+
+    accuracy                           0.61     39679
+   macro avg       0.66      0.64      0.60     39679
+weighted avg       0.68      0.61      0.60     39679
+
+
+thresh8 = 0.3
+               precision    recall  f1-score   support
+
+   Don't Buy       0.84      0.33      0.47     22170
+         Buy       0.52      0.92      0.67     17509
+
+    accuracy                           0.59     39679
+   macro avg       0.68      0.62      0.57     39679
+weighted avg       0.70      0.59      0.56     39679
+
+
+risky_thresh9 = 0.25
+                 precision    recall  f1-score   support
+
+   Don't Buy       0.87      0.20      0.33     22170
+         Buy       0.49      0.96      0.65     17509
+
+    accuracy                           0.54     39679
+   macro avg       0.68      0.58      0.49     39679
+weighted avg       0.70      0.54      0.47     39679
+
+
+thresh10 (max 2 * tpr - fpr) = 0.0938175767660141
+               precision    recall  f1-score   support
 
    Don't Buy       1.00      0.00      0.00     22170
          Buy       0.44      1.00      0.61     17509
@@ -38,12 +107,22 @@ risky_thresh_report              precision    recall  f1-score   support
    macro avg       0.72      0.50      0.31     39679
 weighted avg       0.75      0.44      0.27     39679
 
-risky_thresh2 = 0.25
-risky_thresh_report              precision    recall  f1-score   support
 
-   Don't Buy       0.87      0.20      0.33     22170
-         Buy       0.49      0.96      0.65     17509
 
-    accuracy                           0.54     39679
-   macro avg       0.68      0.58      0.49     39679
-weighted avg       0.70      0.54      0.47     39679
+With a TP of 6% and TSL of 6%, the avg loss when the TSL is hit from the highest price is around 3.6%.
+The TSL was hit first on 56% of the candles (56% of candles have label 0). 
+
+To make a profit going long the precision on the buy threshold needs to be at-least 0.375, 
+if making random predictions the precision is 0.44 (that's why buy and hold has been profitable over the last 12 years)
+assuming the worst case scenario where every TSL results in a loss of 6% from the highest price the minimum precision should be 0.5
+
+To make a profit going short the precision on the sell threshold needs to be atleast 0.625
+if making random predicitions the precision is 0.56
+
+potential trading strategy:
+	if pred >= 0.45:
+		place order with TP and TSL of 6%
+	if thresh <= 0.35:
+		sell
+
+

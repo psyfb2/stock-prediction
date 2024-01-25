@@ -1,7 +1,7 @@
-const sell_threshold = 0.2;
-const j_threshold = 0.35;
+const sell_threshold = 0.25;
+const j_threshold = 0.4;
 const j_boundary = 0.05;
-const buy_threshold = 0.6;
+const buy_threshold = 0.65;
 const apiUrl = window.location.href;
 
 // change this Value to set the percentage
@@ -124,7 +124,7 @@ function animate() {
     ctx.beginPath();
     ctx.strokeStyle = "#00FF00";
     ctx.lineWidth = "3";
-    ctx.arc(center.x, center.y, radius, 1.75 * Math.PI, 0);
+    ctx.arc(center.x, center.y, radius, (1 + buy_threshold) * Math.PI, 0);
     ctx.stroke();
   }
 

@@ -569,12 +569,12 @@
     "vix_h_orig",
     "vix_l_orig"
   ],
-  "data_npz_file": null,
+  "data_npz_file": "datasets.npz",
   "train_start_date": "2012-01-01",
   "val_start_date": "2023-04-01",
   "test_start_date": "2023-09-01",
   "test_end_date": "2024-01-06",
-  "num_candles_to_stack": 16,
+  "num_candles_to_stack": 2,
   "candle_size": "1d",
   "tp": 0.06,
   "tsl": 0.06,
@@ -582,7 +582,7 @@
   "storage_path": "training_artifacts/supervised_learning",
   "model_config": {
     "model_type": "mlp",
-    "hidden_layers": [512, 512],
+    "hidden_layers": [64, 32, 16],
     "dropout": 0.1,
     "lr_mul": 2.0,
     "n_warmup_steps": 1000,
