@@ -1,5 +1,5 @@
 {
-  "tickers": [
+  "stocks": [
     ["A", "NYSE"],
     ["AA", "NYSE"],
     ["AAN", "NYSE"],
@@ -4545,36 +4545,6 @@
     ["WRN", "AMEX"],
     ["XTNT", "AMEX"],
     ["ZDGE", "AMEX"],
-    ["ZOM", "AMEX"],
-    ["OGC", "TSX"],
-    ["U-UN", "TSX"],
-    ["ORA", "TSX"],
-    ["EFR", "TSX"],
-    ["CEY", "LSE"],
-    ["NHC", "ASX"],
-    ["TER", "ASX"],
-    ["PDN", "ASX"]
-  ],
-  "vix_features_to_use": [],
-  "perform_feature_normalisation": false,
-  "data_npz_file": null,
-  "train_start_date": "1998-01-01",
-  "val_start_date": "2023-04-01",
-  "test_start_date": "2023-10-01",
-  "test_end_date": "2024-02-26",
-  "num_candles_to_stack": 4,
-  "candle_size": "1d",
-  "tp": 0.03,
-  "tsl": 0.03,
-  "experiment_name": "xgboost_base_experiment",
-  "storage_path": "training_artifacts/supervised_learning",
-  "model_config": {
-    "model_type": "xgboost",
-    "device": "cpu",
-    "max_depth": 6,
-    "eta": 0.3,
-    "gamma": 0,
-    "lambda": 1,
-    "early_stopping_rounds": 50
-  }
+    ["ZOM", "AMEX"]
+  ]
 }

@@ -30,6 +30,86 @@ from utils.early_stopping import EarlyStopper
 
 logger = logging.getLogger(__name__)
 
+"""
+TO DO:
+    how to test each strategy?
+
+    - Create models to predict if close_{t + 1} > close_{t}, close_{t + 1} > open_{t + 1}, open_{t + 1} > close_{t}
+      hyperparemeter tuning on validation set and early stopping
+      test set to pick best model (from MLP, 1D-CNN, XGBoost, Ensemble (majority vote)) for each of the three predictions.
+
+      Also use a reduced feature set with T in {2, 3, 4, 5}, with and without normalisation.
+        (l to o, o to c, c to high, c_perc_change, v_perc_change,
+         percentile_6month, percentile_1y, 
+         bbands, mfi, uo, adx (no +- signal), macd, stoch_rsi (no ma), stoch_osc (no ma), natr, 
+         50day_sma,  100day_sma, 200day_sma, c_perc_change_ema_10, 
+         month_of_year)
+      and use a lot of data (5000+ stocks from US, Canada, UK, EU)
+    
+    - Create Markov chain for last 3 candles where each candle has the following posibilities:
+        - close_t > close_{t - 1}
+        - close_t > open_t
+        - open_t  > close_{t - 1}
+        - neck > body
+        - tail > body
+        - volume_t > volume_{t - 1} * 1.25
+        - NATR > 3.0
+        - ADX > 25
+        - MACD > 0
+        - MACD_HIST > 0
+        - low_t < bbands_lower_t
+        - high_t > bbands_upper_t
+        - bbands_width_t > bbands_width_{t - 1}
+        - STOCH_RSI > 0.9
+        - STOCH_RSI < 0.1
+        - probably need to be candle specific about this
+
+        Make sure there is enough data to estimate probability of each transition. If not
+        try last 2 candles. Test Markov chain on same test used for ML models, is it competetive
+        in terms of accuracy and F1 for the three prediction tasks? 
+
+        Then calculate confidence interval adjusted transition probabilities,
+        each transition prob in markov chain = prob - 95% CI. The markov chain probabilities will no
+        longer add to one, but this will be used as a kind of safety net, especially when we are uncertain
+        about the estimated transition probability.
+        
+
+    - Testing a trading strategy
+        use a second test set for testing trading strategy
+        Strategy 1:
+            if transition to a close_t > close_{t - 1} state has probability > 50
+                
+                if CI adjusted transition probability > 51 and ML predicts close_t > close_{t - 1}
+                    Given that close_t > close_{t - 1}, 
+                    if P(open_t < close_{t - 1}) > 50 buy on the next open, otherwise buy on the close, sell on next close
+            
+            elif transition to a close_t > open_t state has probability > 50
+                if CI adjusted transition probability > 51 and ML predicts close_t > open_t 
+                    buy on next open, sell on next close
+            
+            elif transition to a open_t > close_{t - 1} state has probability > 50
+                if CI adjusted transition probability > 51 and ML predicts open_t > close_{t - 1}
+                    buy on close, sell on next open
+            
+            also if had a sell on next close from the last timestep and this timestep have a buy on close, 
+            cancel the previous sell order and stay long to save on commissions.
+    
+        Calculate Profit, Sharpe Ratio, Win Rate, Bought lower Rate, Avg Profit per Trade, Best Trade, Worst Trade, Exposure, B&H profit
+        across all stocks in test test and compare with equally weighted B&H profit.
+
+        One thing to keep in mind is that in the backtesting we assume we can know the true close price and volume
+        before placing a trade on the close. However in reality this is not the case since we trade e.g. 5 mins before close.
+        Calculations for 15 stocks using yfinance querying 5 mins before close and then the day after shows
+        an average price deviation of the price 5 mins before close and actual close is 0.07% and average volume increase is 18.35%.
+        So in a real life application it's recomended to artificially raise the voume by 18%, the deviation in the close is acceptable.
+        Once a broker is decided I would retest this with chosed broker data collection.
+
+    - Future improvements:
+        - There are 8 combinations of c_t > c_{t - 1}, c_t > o_t, o_t > c_{t - 1}, but only 6 of them are physically possible.
+          For the ML model train a single multi-label classification model with logical constraints (see: https://arxiv.org/pdf/2103.13427.pdf)
+          and use it if it performs better on the test set for the three predictions.
+"""
+
 
 def main(train_config: dict):
     start_time = time.time()

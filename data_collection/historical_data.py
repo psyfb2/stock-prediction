@@ -190,6 +190,10 @@ def _get_historical_data(symbol: str, start_date: str, end_date: str,
     df = ticker.history(start=start_date, end=end_date, prepost=outside_rth, interval=candle_size).reset_index()
     df = df.rename(columns={"Date": "t", "Open": "o", "Close": "c", "Low": "l", "High": "h", "Volume": "v"})
 
+    if df.empty:
+        logger.warning(f"df is empty!")
+        return df[["t", "o", "c", "h", "l", "v"]]
+ 
     try:
         df['t'] = df['t'].dt.tz_convert(None)  # convert to UTC and make naive
     except TypeError:
