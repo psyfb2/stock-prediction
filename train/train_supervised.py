@@ -331,7 +331,7 @@ def main(train_config: dict):
         val_X, val_y = val_dataset.get_full_data_matrix()
 
         classifier.fit(train_X, train_y, eval_set=[(val_X, val_y)])
-        classifier.save_model("model.json")
+        classifier.save_model(local_storage_dir + "model.json")
 
         test_X, test_y = test_dataset.get_full_data_matrix()
 
