@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from data_collection.historical_data import get_historical_data, get_vix_daily_data, validate_historical_data
 from data_preprocessing.asset_preprocessor import AssetPreprocessor
 from data_preprocessing.vix_preprocessor import VixPreprocessor
-from data_preprocessing.labelling import binary_label_tp_tsl
+from data_preprocessing.labelling import binary_label_tp_tsl, next_close_higher
 from data_preprocessing.index_mapper import IndexMapper
 from utils.date_range import daterange
 
@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 # TODO: create a StocksDataset which subclasses IterableDataset. This should not load the whole dataset in memory
 #       which is useful when the dataset is so huge it cannot fit in memory
+#       on that note, each stock takes up around 2.46MB of RAM 
+#       (assuming data from 1998-2024, 26 features, 4 candles to stack, flattened get_full_data_matrix)
 
 class StocksDatasetInMem(Dataset):
     def __init__(self, tickers: List[List[str]], 
@@ -26,12 +28,14 @@ class StocksDatasetInMem(Dataset):
                  vix_features_to_use: List[str],
                  start_date: str, end_date: str, 
                  tp: float, tsl: float, num_candles_to_stack: int, 
+                 close_higher_label: Optional[int] = None, 
                  means: Optional[Dict[str, Dict[str, float]]] = None,
                  stds: Optional[Dict[str, Dict[str, float]]] = None,
                  candle_size: str ="1d", procs: Optional[int] = None, 
                  features: Optional[np.ndarray] = None, 
                  labels: Optional[np.ndarray] = None,
-                 lengths: Optional[int] = None):
+                 lengths: Optional[int] = None,
+                 perform_normalisation: bool = True):
         """ Initialise preprocessed dataset. Performs windowing at inference time to save memory
         (i.e. convert sample shape from (D, ) to (T, D) whenever getting the next data-point.
 
@@ -45,6 +49,9 @@ class StocksDatasetInMem(Dataset):
             tp (float): take profit value used for labelling (e.g. 0.05 for 5% take profit)
             tsl (float): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
             num_candles_to_stack (int): number of time-steps for a single data-point
+            close_higher_label (Optional[int]): if not None will ignore tp and tsl. Instead label is
+                1 if close_{t + close_higher_label} > close_t
+                0 otherwise
             means (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's mean.
                 Used for normalisation. If not specified will calculate this.
             stds: (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's std.
@@ -61,12 +68,16 @@ class StocksDatasetInMem(Dataset):
             lengths (Optional[int]): represents calculated length of each ticker within features. If this is given will ignore
                 tickers, start_date, end_date, tp, tsl, means, stds, candle_size and procs, as will treat
                 this as the dataset.
+            perform_normalisation (bool): normalise the data as part of the preprocessing step?
         """
         super().__init__()
         if features is not None and labels is not None and lengths is not None:
             # perform some checks on data
             if features.shape[0] != np.sum(lengths):
                 raise ValueError(f"Length of features is {features.shape[0]}, but expected it to be {np.sum(lengths)}")
+            
+            if features.shape[0] != labels.shape[0]:
+                raise ValueError(f"Features must have same length as labels ({features.shape[0]} != {labels.shape[0]})")
             
             num_nans = np.count_nonzero(np.isnan(features))
             if num_nans != 0:
@@ -83,8 +94,10 @@ class StocksDatasetInMem(Dataset):
             data_df, lengths, means, stds = self.load_dataset_in_mem(
                 tickers=tickers, features_to_use=features_to_use, vix_features_to_use=vix_features_to_use,
                 start_date=start_date, end_date=end_date, 
-                tp=tp, tsl=tsl, num_candles_to_stack=num_candles_to_stack, 
-                means=means, stds=stds, candle_size=candle_size, procs=procs
+                tp=tp, tsl=tsl, num_candles_to_stack=num_candles_to_stack,
+                close_higher_label=close_higher_label,
+                means=means, stds=stds, candle_size=candle_size, procs=procs,
+                perform_normalisation=perform_normalisation
             )
 
             self.features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy(dtype=np.float32)  # (N, D)
@@ -111,13 +124,58 @@ class StocksDatasetInMem(Dataset):
     def __len__(self):
         return len(self.idx_mapper)
 
+    def get_full_data_matrix(self) -> Tuple[np.ndarray, np.ndarray]:
+        """ The feature are stored in a (N, D) matrix.
+        Whenever a batch is loaded, a (batch_size, num_candles_to_stack, D) is returned
+        so the windowing happens dynamically whenever a batch is loaded. 
+        This will save memory for Deep Learning models. 
+        
+        Some models (e.g. XGBoost) require the whole data matrix to be passed at the
+        start of training. So convert (N, D) matrix to (N', num_candles_to_stack * D) matrix and return it,
+        also return corrosponding labels.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: 
+                (N', num_candles_to_stack * D) data matrix,
+                (N', ) labels
+        """
+        Xs = []
+        ys = []
+        start_idx = 0
+
+        for n in self.lengths:
+            Xs.append(self.window_matrix(mat=self.features[start_idx : start_idx + n, :], window_size=self.num_candles_to_stack))
+            ys.append(self.labels[start_idx + self.num_candles_to_stack - 1 : start_idx + n])
+            start_idx += n
+        
+        return np.vstack(Xs), np.hstack(ys)
+    
+    @staticmethod
+    def window_matrix(mat: np.ndarray, window_size: int) -> np.ndarray:
+        """ Apply sliding window of window_size to mat to go from a (N, D) mat
+        to a (N - window_size + 1, window_size * D) mat.
+
+        Args:
+            mat (np.ndarray): 2D matrix with shape (N, D)
+            window_size (int): sliding window size. Must be less than or equal to N
+
+        Returns:
+            np.ndarray: 2D np array with shape (N - window_size + 1, window_size * D)
+        """
+        if window_size > mat.shape[0]:
+            raise ValueError(f"Argument 'window_size' ({window_size}) must be less than or equal to mat.shape[0] ({mat.shape[0]})")
+        
+        return np.lib.stride_tricks.sliding_window_view(mat.ravel(), window_size * mat.shape[1])[::mat.shape[1]]
+
     @classmethod
     def load_dataset_in_mem(cls, tickers: List[List[str]], features_to_use: List[str],
                             vix_features_to_use: List[str], start_date: str, end_date: str, 
                             tp: float, tsl: float, num_candles_to_stack: int, 
+                            close_higher_label: Optional[int] = None, 
                             means: Optional[Dict[str, Dict[str, float]]] = None, 
                             stds: Optional[Dict[str, Dict[str, float]]] = None,
-                            candle_size="1d", procs: Optional[int] = None
+                            candle_size="1d", procs: Optional[int] = None,
+                            perform_normalisation: bool = True
                             ) -> Tuple[pd.DataFrame, List[int], Dict[str, float], Dict[str, float]]:
         """ Load whole preprocessed dataset. Does not perform windowing. This should
         be done at inference time to save memory.
@@ -132,6 +190,9 @@ class StocksDatasetInMem(Dataset):
             tp (float): take profit value used for labelling (e.g. 0.05 for 5% take profit)
             tsl (float): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
             num_candles_to_stack (int): number of time-steps for a single data-point
+            close_higher_label (Optional[int]): if not None will ignore tp and tsl. Instead label is
+                1 if close_{t + close_higher_label} > close_t
+                0 otherwise
             means (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's mean.
                 Used for normalisation. If not specified will calculate this.
             stds: (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's std.
@@ -139,6 +200,7 @@ class StocksDatasetInMem(Dataset):
             candle_size (str): frequency of candles. "1d" or "1h"
             procs (Optional[int]): number of proccesses to use for data preprocessing (will perform map over tickers).
                 If None, will use os.cpu_count()
+            perform_normalisation (bool): normalise the data as part of the preprocessing step?
         Returns:
             (Tuple[pd.DataFrame, List[int], Dict[str, float], Dict[str, float]]):
                 (data_df, lengths, means, stds).
@@ -158,7 +220,7 @@ class StocksDatasetInMem(Dataset):
 
         with Pool(procs) as p:
             results = p.starmap(cls._preprocess_ticker, ((ticker, exchange, start_date, end_date, preprocessor,
-                                                         num_candles_to_stack, tp, tsl, candle_size) 
+                                                         num_candles_to_stack, tp, tsl, candle_size, close_higher_label) 
                                                         for ticker, exchange in tickers))
             
         all_dfs = []
@@ -176,7 +238,9 @@ class StocksDatasetInMem(Dataset):
         if calc_means:
             means["asset"] = dict(data_df.mean(numeric_only=True))
             stds["asset"]  = dict(data_df.std(numeric_only=True))
-        preprocessor.normalise_df(data_df, means=means["asset"], stds=stds["asset"])
+        
+        if perform_normalisation:
+            preprocessor.normalise_df(data_df, means=means["asset"], stds=stds["asset"])
 
         num_nans = data_df.isna().sum().sum()
         assert num_nans == 0, f"Expected Number of NaNs prior to loading VIX to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
@@ -190,7 +254,8 @@ class StocksDatasetInMem(Dataset):
                 calc_means=calc_means,
                 means=means,
                 stds=stds,
-                num_candles_to_stack=num_candles_to_stack
+                num_candles_to_stack=num_candles_to_stack,
+                perform_normalisation=perform_normalisation
             )
 
         assert len(data_df) == sum(lengths), f"length of data_df is {len(data_df)}, but expected it to be {sum(lengths)}"
@@ -207,7 +272,8 @@ class StocksDatasetInMem(Dataset):
                        calc_means: bool, 
                        means: Dict[str, Dict[str, float]],
                        stds: Dict[str, Dict[str, float]],
-                       num_candles_to_stack: int
+                       num_candles_to_stack: int,
+                       perform_normalisation: bool = True, 
                        ) -> pd.DataFrame:
         """ Merge preprocessed df with VIX data
 
@@ -222,7 +288,7 @@ class StocksDatasetInMem(Dataset):
             stds (Dict[str, Dict[str, float]]): stds dict
             num_candles_to_stack (int): number of candles to stack. 
                 Used to cut VIX df to only preprocess the required rows.
-
+            perform_normalisation (bool): normalise VIX df?
         Returns:
             pd.DataFrame: VIX data merged with data_df. Columns of data_df
                 are kept in order.
@@ -240,7 +306,8 @@ class StocksDatasetInMem(Dataset):
             means["vix"] = dict(vix_df.mean(numeric_only=True))
             stds["vix"]  = dict(vix_df.std(numeric_only=True))
 
-        vix_preprocessor.normalise_df(vix_df, means=means["vix"], stds=stds["vix"])
+        if perform_normalisation:
+            vix_preprocessor.normalise_df(vix_df, means=means["vix"], stds=stds["vix"])
 
         # fill VIX df (might be missing some days, just fill with previous value)
         last_idx = 0
@@ -265,6 +332,7 @@ class StocksDatasetInMem(Dataset):
     def preprocess_ticker(ticker: str, exchange: str, start_date: str, end_date: str, 
                           preprocessor: AssetPreprocessor, num_candles_to_stack: int, 
                           tp: Optional[float] = None, tsl: Optional[float] = None, candle_size="1d",
+                          close_higher_label: Optional[int] = None,
                           raise_invalid_data_exception=False) -> pd.DataFrame:
         """ Load preprocessed data for a ticker. Will not merge VIX data or perform normalisation.
 
@@ -280,6 +348,9 @@ class StocksDatasetInMem(Dataset):
             tsl (Optional[float]): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
                 If None, wont perform labelling ("labels" col wont be present in returned df). Defaults to None
             candle_size (str): frequency of candles. "1d" or "1h". Defaults to "1d"
+            close_higher_label (Optional[int]): if not None will ignore tp and tsl. Instead label is
+                1 if close_{t + close_higher_label} > close_t
+                0 otherwise
             raise_invalid_data_exception (bool): when getting historical data from API, check that
                 there are no missing candles between start_date and end_date. If there is then
                 throw an exception if this arg is True. Otherwise just warn.
@@ -307,12 +378,17 @@ class StocksDatasetInMem(Dataset):
             # cut left part of df which goes before start_date even after stacking
             df = df.iloc[start_date_idx - num_candles_to_stack + 1:].reset_index(drop=True)
         else:
-            logger.warning(f"Data is not complete. start_date_idx={start_date_idx}, "
-                           f"but it should be atleast {num_candles_to_stack - 1}. Check data-collection.")
+            logger.warning(f"Ticker {ticker} data does not go back to {adjusted_start_date}. start_date_idx={start_date_idx}, "
+                           f"but it should be atleast {num_candles_to_stack - 1}.")
 
         # calculate labels
-        if tp is not None and tsl is not None:
-            df["labels"] = binary_label_tp_tsl(df, tp, tsl)
+        if (tp is not None and tsl is not None) or close_higher_label is not None:
+            if close_higher_label:
+                # TODO: only works for next close for now, make it work for close_{t + n}
+                df["labels"] = next_close_higher(df)
+            else:
+                df["labels"] = binary_label_tp_tsl(df, tp, tsl)
+    
             logger.info(f"label counts:\n{df['labels'].value_counts(normalize=True)}")
             logger.info(f"labels has {(df['labels'].isna().sum() / len(df)) * 100}% NaNs, these will be removed.")
 
@@ -332,10 +408,21 @@ class StocksDatasetInMem(Dataset):
     def _preprocess_ticker(cls, ticker: str, exchange: str, start_date: str, 
                            end_date: str, preprocessor: AssetPreprocessor,
                            num_candles_to_stack: int, tp: Optional[float] = None, 
-                           tsl: Optional[float] = None, candle_size="1d") -> Union[pd.DataFrame, str]:
+                           tsl: Optional[float] = None, candle_size="1d",
+                           close_higher_label: Optional[int] = None) -> Union[pd.DataFrame, str]:
         try:
-            return cls.preprocess_ticker(ticker, exchange, start_date, end_date, preprocessor, 
-                                         num_candles_to_stack, tp, tsl, candle_size)
+            return cls.preprocess_ticker(
+                ticker=ticker, 
+                exchange=exchange, 
+                start_date=start_date, 
+                end_date=end_date, 
+                preprocessor=preprocessor, 
+                num_candles_to_stack=num_candles_to_stack, 
+                tp=tp, 
+                tsl=tsl, 
+                candle_size=candle_size, 
+                close_higher_label=close_higher_label
+            )
         except Exception as ex:
             logger.exception(f"Error while preprocessing ticker '{ticker}'.")
             return f"Error while preprocessing ticker '{ticker}': {ex}"

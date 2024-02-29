@@ -300,24 +300,6 @@ def get_last_full_trading_day(market_calander_name="NASDAQ") -> datetime:
     return valid_days[-1].to_pydatetime()
 
 
-def get_all_sp500_tickers() -> List[str]:
-    """ get all the ticker symbols currently in the S&P 500
-
-    Returns:
-        List[str]: all symbols in S&P 500
-    """
-    resp = requests.get('http://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
-    soup = bs.BeautifulSoup(resp.text, 'lxml')
-    table = soup.find('table', {'class': 'wikitable sortable'})
-
-    tickers = []
-    for row in table.findAll('tr')[1:]:
-        ticker = row.findAll('td')[0].text.replace("\n", "")
-        tickers.append(ticker)
-    
-    return tickers
-
-
 def get_vix_daily_data(vix_ticker: str) -> pd.DataFrame:
     """ get daily vix data until the last trading day.
 
