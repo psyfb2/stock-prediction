@@ -396,7 +396,12 @@ class StocksDatasetInMem(Dataset):
             if not all([nan_indicies[i + 1] == nan_indicies[i] + 1 for i in range(len(nan_indicies) - 1)]):
                 logger.warning(f"NaN indicies not contigious: {nan_indicies}")
 
-            df = df.dropna().reset_index(drop=True)
+        # drop any rows with NaN or inf 
+        original_len = len(df)
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.dropna().reset_index(drop=True)
+        if original_len != len(df):
+            logger.warning(f"df had {original_len - len(df)} NaN or inf elements. These have been dropped.")
 
         if len(df) < num_candles_to_stack:
             raise ValueError(f"ticker '{ticker}' with start_date={start_date}, end_date={end_date} and candle_size={candle_size} "

@@ -329,11 +329,29 @@ def main(train_config: dict):
     else:
         train_X, train_y = train_dataset.get_full_data_matrix()
         val_X, val_y = val_dataset.get_full_data_matrix()
+        
+        train_X[(train_X == -np.inf) | (train_X == np.inf)] = np.nan
+        val_X[(val_X == -np.inf) | (val_X == np.inf)] = np.nan
 
-        classifier.fit(train_X, train_y, eval_set=[(val_X, val_y)])
+        classifier.fit(train_X, train_y, eval_set=[(train_X, train_y), (val_X, val_y)])
         classifier.save_model(local_storage_dir + "model.json")
 
+        # plot train and val loss
+        results = classifier.evals_result()
+
+        plt.clf()
+        plt.figure(figsize=(10,7))
+        plt.plot(results["validation_0"]["logloss"], label="Training loss")
+        plt.plot(results["validation_1"]["logloss"], label="Validation loss")
+        plt.axvline(classifier.best_iteration, color="gray", label="Optimal tree number")
+        plt.xlabel("Number of trees")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.savefig(local_storage_dir + "loss.pdf")
+
         test_X, test_y = test_dataset.get_full_data_matrix()
+
+        test_X[(test_X == -np.inf) | (test_X == np.inf)] = np.nan
 
         eval_sklearn_model(
             classifier=classifier,
