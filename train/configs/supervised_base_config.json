@@ -4593,8 +4593,8 @@
   "num_candles_to_stack": 4,
   "candle_size": "1d",
   "close_higher_label": null,
-  "tp": 4,
-  "tsl": 6,
+  "tp": 0.04,
+  "tsl": 0.06,
   "experiment_name": "xgboost_base_experiment",
   "storage_path": "training_artifacts/supervised_learning",
   "model_config": {
