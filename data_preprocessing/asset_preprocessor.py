@@ -36,12 +36,9 @@ class AssetPreprocessor(BasePreprocessor):
                 "rank":              (0, 1),
                 "rank_126":          (0, 1),
                 "rank_30":           (0, 1),
-                "hour_of_day_sin":   (-1, 1),
-                "hour_of_day_cos":   (-1, 1),
-                "day_of_month_sin":  (-1, 1),
-                "day_of_month_cos":  (-1, 1),
                 "month_of_year_sin": (-1, 1),
-                "month_of_year_cos": (-1, 1)
+                "month_of_year_cos": (-1, 1),
+                "month_of_year_categorical": (0, 11)
             },
             features_to_use=features_to_use,
             candle_size=candle_size
@@ -147,22 +144,8 @@ class AssetPreprocessor(BasePreprocessor):
         if (df['t'].iloc[-1] - df['t'].iloc[0]).days < 1:
             raise ValueError(f"df must have atleast one days worth of data. df dates:\n{df['t']}")
 
-        hours = df['t'].apply(lambda t: t.hour)
-        min_hour = hours.min()
-        max_hour = hours.max()
-        self._logger.info(f"min_hour={min_hour}, max_hour={max_hour}")
-
-        # if using daily data or above, hourly features should be excluded
-        if min_hour != max_hour and self.candle_size != "1d":  
-            hours_from_zero = df['t'].apply(lambda t: t.hour - min_hour)
-            df["hour_of_day_sin"] = np.sin(hours_from_zero * (2 * np.pi / (max_hour - min_hour + 1)))
-            df["hour_of_day_cos"] = np.cos(hours_from_zero * (2 * np.pi / (max_hour - min_hour + 1)))
-
-        day_of_month = df['t'].apply(lambda t: t.day - 1)
-        df["day_of_month_sin"] = np.sin(day_of_month * (2 * np.pi / 31))
-        df["day_of_month_cos"] = np.cos(day_of_month * (2 * np.pi / 31))
-
         month_of_year = df['t'].apply(lambda t: t.month - 1)
+        df["month_of_year_categorical"] = month_of_year
         df["month_of_year_sin"] = np.sin(month_of_year * (2 * np.pi / 12))
         df["month_of_year_cos"] = np.cos(month_of_year * (2 * np.pi / 12))
         # ------ ------#

@@ -175,16 +175,7 @@ def _get_historical_data(symbol: str, start_date: str, end_date: str,
     logger.info(f"Making yfinance request with start='{start_date}', end='{end_date}', "
                 f"prepost={outside_rth}, interval='{candle_size}' for ticker '{symbol}'")
     
-    yf_exchange_map = {
-        "LSE": "L",
-        "ASX": "AX",
-        "TSX": "TO",
-        "ETR": "DE"
-    }
-    
-    if exchange in yf_exchange_map and '.' not in symbol:
-        # convert to yfinance ticker format 
-        symbol = f"{symbol}.{yf_exchange_map[exchange]}"
+    symbol = _get_yf_ticker_format(ticker=symbol, exchange=exchange)
 
     ticker = yf.Ticker(symbol)
     df = ticker.history(start=start_date, end=end_date, prepost=outside_rth, interval=candle_size).reset_index()
@@ -218,6 +209,7 @@ def get_exchange(symbol: str) -> str:
         "NYQ": "NYSE",
         "NGM": "NASDAQ",
         "NMS": "NASDAQ",
+        "ASE": "AMEX",
         "BTS": "BATS",
         "TOR": "TSX",
         "AX":  "ASX",
@@ -228,6 +220,44 @@ def get_exchange(symbol: str) -> str:
     exchange = yf.Ticker(symbol).info["exchange"]
 
     return correct_exchange_map.get(exchange, exchange)
+
+
+def get_sector(ticker: str, exchange: str) -> str:
+    """ Get sector for ticker (e.g. "Energy", "Healthcare", "Technology", etc)
+
+    Args:
+        ticker (str): ticker
+        exchange (str): exchange where ticker is traded.
+
+    Returns:
+        str: sector for ticker.
+    """
+    return yf.Ticker(_get_yf_ticker_format(ticker, exchange)).info["sector"]
+
+
+def _get_yf_ticker_format(ticker: str, exchange: str) -> str:
+    """ Conver ticker and exchange combination to yahoofinance ticker format.
+    E.g. ("CEY", "LSE") => "CEY.L"
+
+    Args:
+        ticker (str): _description_
+        exchange (str): _description_
+
+    Returns:
+        str: _description_
+    """
+    yf_exchange_map = {
+        "LSE": "L",
+        "ASX": "AX",
+        "TSX": "TO",
+        "ETR": "DE"
+    }
+    
+    if exchange in yf_exchange_map and '.' not in ticker:
+        # convert to yfinance ticker format 
+        return f"{ticker}.{yf_exchange_map[exchange]}"
+
+    return ticker
 
 
 def validate_historical_data(df: pd.DataFrame, start_date: str, end_date: str, candle_size: str, 

@@ -35,7 +35,6 @@ class TestDataCollection(unittest.TestCase):
 
         self.assertTrue(self.df.equals(df))
         self.assertTrue(os.path.isfile(filename))
-        yf_ticker.assert_called_once_with("FAKE")
         ticker_mock.history.assert_called_once_with(start="2021-01-01", end="2023-01-01", prepost=False, interval="1d")
 
         # call again with same args, should use cache and not call broker
@@ -43,14 +42,12 @@ class TestDataCollection(unittest.TestCase):
         self.assertTrue(self.df.equals(df))
         self.assertTrue(os.path.isfile(filename))
         ticker_mock.history.assert_called_once_with(start="2021-01-01", end="2023-01-01", prepost=False, interval="1d")
-        yf_ticker.assert_called_once_with("FAKE")
 
         # call again with smaller date range, should use cache and not call broker
         df = get_historical_data("FAKE", "2021-01-05", "2021-01-08", "1d", "", False)
         self.assertTrue(self.df.iloc[1:4].reset_index(drop=True).equals(df))
         self.assertTrue(os.path.isfile(filename))
         ticker_mock.history.assert_called_once_with(start="2021-01-01", end="2023-01-01", prepost=False, interval="1d")
-        yf_ticker.assert_called_once_with("FAKE")
 
 
 if __name__ == "__main__":

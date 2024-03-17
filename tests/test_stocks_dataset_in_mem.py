@@ -110,7 +110,7 @@ class TestDataCollection(unittest.TestCase):
         dataset = StocksDatasetInMem(
             tickers=None, features_to_use=None,
             vix_features_to_use=None,
-            start_date=None, end_date=None, tp=None, tsl=None, 
+            start_date=None, end_date=None, label_config=None, 
             num_candles_to_stack=window_size,
             candle_size=None, features=features, labels=labels, 
             lengths=lengths

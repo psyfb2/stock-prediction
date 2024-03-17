@@ -54,21 +54,24 @@ def binary_label_tp_tsl(df: pd.DataFrame, tp: float, tsl: float) -> pd.Series:
     return df.apply(row_func, axis=1)
 
 
-def next_close_higher(df: pd.DataFrame) -> pd.Series:
+def binary_label_close_higher(df: pd.DataFrame, candles_ahead: int) -> pd.Series:
     """ Calculate series which will have value of
-    1 if close_{t + 1} > close_{t}  (next close higher than close at current index)
+    1 if close_{t + candles_ahead} > close_{t}  (close higher than close at current index)
     0 otherwise
 
     Args:
         df (pd.DataFrame): df containing columns ["o", "c", "h", "l"]
+        candles_ahead (int): num candles in the future for comparison. Must be atleast one.
     Returns:
         pd.Series: series with same number of rows as df, last value will be NaN
     """
     if len({"o", "c", "l", "h"}.difference(set(df.columns))) > 0:
         raise ValueError(f"Argument 'df' must contain columns ['o', 'c', 'h', 'l']. Got columns {list(df.columns)}")
+    if candles_ahead < 1:
+        raise ValueError(f"candles_ahead must not be less than 1, got value: {candles_ahead}")
     
-    labels = (df['c'] < df['c'].shift(periods=-1)).astype(int)
-    labels.iloc[-1] = np.NaN
+    labels = (df['c'] < df['c'].shift(periods=-candles_ahead)).astype(int)
+    labels.iloc[-candles_ahead:] = np.NaN
 
     return labels
 

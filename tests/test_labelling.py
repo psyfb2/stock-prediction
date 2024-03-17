@@ -3,7 +3,7 @@ import unittest
 import pandas as pd
 import numpy as np
 
-from data_preprocessing.labelling import binary_label_tp_tsl, next_close_higher
+from data_preprocessing.labelling import binary_label_tp_tsl, binary_label_close_higher
 
 class TestDataCollection(unittest.TestCase):
     def test_binary_label_tp_tsl(self):
@@ -66,7 +66,7 @@ class TestDataCollection(unittest.TestCase):
         labels = binary_label_tp_tsl(df, 0.03, 0.04)
         self.assertTrue(df["r"].equals(labels))
     
-    def test_next_close_higher(self):
+    def test_binary_label_close_higher(self):
         df = pd.DataFrame(
             {
                 "o": [9,  12, 13, 9, 15],
@@ -78,7 +78,52 @@ class TestDataCollection(unittest.TestCase):
             }
         )
 
-        labels = next_close_higher(df)
+        labels = binary_label_close_higher(df, 1)
+        self.assertTrue(df["r"].equals(labels))
+    
+    def test_binary_label_close_higher2(self):
+        df = pd.DataFrame(
+            {
+                "o": [9,  12, 13, 9, 15],
+                "c": [10, 13, 12, 9, 15],
+                "h": [13, 14, 14, 9, 15],
+                "l": [8,  9,  10, 9, 15],
+                # expected result
+                "r": [1,  0,  1,  np.nan, np.nan]
+            }
+        )
+
+        labels = binary_label_close_higher(df, 2)
+        self.assertTrue(df["r"].equals(labels))
+    
+    def test_binary_label_close_higher3(self):
+        df = pd.DataFrame(
+            {
+                "o": [9,  12, 13, 9, 15],
+                "c": [10, 13, 12, 9, 15],
+                "h": [13, 14, 14, 9, 15],
+                "l": [8,  9,  10, 9, 15],
+                # expected result
+                "r": [0,  1,  np.nan,  np.nan, np.nan]
+            }
+        )
+
+        labels = binary_label_close_higher(df, 3)
+        self.assertTrue(df["r"].equals(labels))
+    
+    def test_binary_label_close_higher4(self):
+        df = pd.DataFrame(
+            {
+                "o": [9,  12, 13, 9, 15],
+                "c": [10, 13, 12, 9, 15],
+                "h": [13, 14, 14, 9, 15],
+                "l": [8,  9,  10, 9, 15],
+                # expected result
+                "r": [1,  np.nan,  np.nan,  np.nan, np.nan]
+            }
+        )
+
+        labels = binary_label_close_higher(df, 4)
         self.assertTrue(df["r"].equals(labels))
 
 

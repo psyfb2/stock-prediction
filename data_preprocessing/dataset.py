@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Tuple, Optional, Union
+from typing import List, Dict, Tuple, Optional, Union, Any
 from dateutil.parser import parse
 from datetime import timedelta
 from multiprocessing import Pool
@@ -8,10 +8,10 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset
 
-from data_collection.historical_data import get_historical_data, get_vix_daily_data, validate_historical_data
+from data_collection.historical_data import get_historical_data, get_vix_daily_data
 from data_preprocessing.asset_preprocessor import AssetPreprocessor
 from data_preprocessing.vix_preprocessor import VixPreprocessor
-from data_preprocessing.labelling import binary_label_tp_tsl, next_close_higher
+from data_preprocessing import labelling
 from data_preprocessing.index_mapper import IndexMapper
 from utils.date_range import daterange
 
@@ -24,11 +24,12 @@ logger = logging.getLogger(__name__)
 
 class StocksDatasetInMem(Dataset):
     def __init__(self, tickers: List[List[str]], 
+                 sectors: Optional[Dict[str, str]],
                  features_to_use: List[str], 
                  vix_features_to_use: List[str],
                  start_date: str, end_date: str, 
-                 tp: float, tsl: float, num_candles_to_stack: int, 
-                 close_higher_label: Optional[int] = None, 
+                 label_config: Dict[str, Any],
+                 num_candles_to_stack: int,
                  means: Optional[Dict[str, Dict[str, float]]] = None,
                  stds: Optional[Dict[str, Dict[str, float]]] = None,
                  candle_size: str ="1d", procs: Optional[int] = None, 
@@ -41,17 +42,15 @@ class StocksDatasetInMem(Dataset):
 
         Args:
             tickers (List[List[str]]): [[ticker, exchange], ...] for tickers to be included in the dataset
+            sectors (Dict[str, str]): maps ticker_exchange to sector. E.g. "AAPL_NASDAQ": "Technology".
+                If None, wont add sectors as a feature.
             features_to_use (List[str]): feature names for asset preprocessor
             vix_features_to_use (List[str]): features to use for VIX preprocessor. If None or empty won't
                 include VIX data.
             start_date (str): start date for data in yyyy-mm-dd format
             end_date (str): end date for data in yyyy-mm-dd format (exclusive)
-            tp (float): take profit value used for labelling (e.g. 0.05 for 5% take profit)
-            tsl (float): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
+            label_config (Dict[str, Any]): config for calculating labels
             num_candles_to_stack (int): number of time-steps for a single data-point
-            close_higher_label (Optional[int]): if not None will ignore tp and tsl. Instead label is
-                1 if close_{t + close_higher_label} > close_t
-                0 otherwise
             means (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's mean.
                 Used for normalisation. If not specified will calculate this.
             stds: (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's std.
@@ -60,13 +59,13 @@ class StocksDatasetInMem(Dataset):
             procs (Optional[int]): number of proccesses to use for data preprocessing (will perform map over tickers).
                 If None, will use os.cpu_count()
             features (Optional[np.ndarray]): (N, D) array representing features. If this is given will ignore
-                tickers, start_date, end_date, tp, tsl, means, stds, candle_size and procs, as will treat
+                tickers, start_date, end_date, label_config means, stds, candle_size and procs, as will treat
                 this as the dataset.
             labels (Optional[np.ndarray]): (N, ) array representing labels. If this is given will ignore
-                tickers, start_date, end_date, tp, tsl, means, stds, candle_size and procs, as will treat
+                tickers, start_date, end_date, label_config, means, stds, candle_size and procs, as will treat
                 this as the dataset.
             lengths (Optional[int]): represents calculated length of each ticker within features. If this is given will ignore
-                tickers, start_date, end_date, tp, tsl, means, stds, candle_size and procs, as will treat
+                tickers, start_date, end_date, label_config means, stds, candle_size and procs, as will treat
                 this as the dataset.
             perform_normalisation (bool): normalise the data as part of the preprocessing step?
         """
@@ -92,10 +91,10 @@ class StocksDatasetInMem(Dataset):
             self.means = self.stds = None
         else:
             data_df, lengths, means, stds = self.load_dataset_in_mem(
-                tickers=tickers, features_to_use=features_to_use, vix_features_to_use=vix_features_to_use,
+                tickers=tickers, sectors=sectors,
+                features_to_use=features_to_use, vix_features_to_use=vix_features_to_use,
                 start_date=start_date, end_date=end_date, 
-                tp=tp, tsl=tsl, num_candles_to_stack=num_candles_to_stack,
-                close_higher_label=close_higher_label,
+                label_config=label_config, num_candles_to_stack=num_candles_to_stack,
                 means=means, stds=stds, candle_size=candle_size, procs=procs,
                 perform_normalisation=perform_normalisation
             )
@@ -168,10 +167,10 @@ class StocksDatasetInMem(Dataset):
         return np.lib.stride_tricks.sliding_window_view(mat.ravel(), window_size * mat.shape[1])[::mat.shape[1]]
 
     @classmethod
-    def load_dataset_in_mem(cls, tickers: List[List[str]], features_to_use: List[str],
+    def load_dataset_in_mem(cls, tickers: List[List[str]], sectors: Optional[Dict[str, str]],
+                            features_to_use: List[str],
                             vix_features_to_use: List[str], start_date: str, end_date: str, 
-                            tp: float, tsl: float, num_candles_to_stack: int, 
-                            close_higher_label: Optional[int] = None, 
+                            label_config: Dict[str, Any], num_candles_to_stack: int,
                             means: Optional[Dict[str, Dict[str, float]]] = None, 
                             stds: Optional[Dict[str, Dict[str, float]]] = None,
                             candle_size="1d", procs: Optional[int] = None,
@@ -182,17 +181,15 @@ class StocksDatasetInMem(Dataset):
 
         Args:
             tickers (List[List[str]]): [[ticker, exchange], ...] for tickers to be included in the dataset
+            sectors (Optional[Dict[str, str]]): maps ticker_exchange to sector. E.g. "AAPL_NASDAQ": "Technology".
+                If None, wont add sectors as a feature.
             features_to_use (List[str]): feature names for asset preprocessor
             vix_features_to_use (List[str]): features to use for VIX preprocessor. If None or empty won't
                 include VIX data.
             start_date (str): start date for data in yyyy-mm-dd format
             end_date (str): end date for data in yyyy-mm-dd format (exclusive)
-            tp (float): take profit value used for labelling (e.g. 0.05 for 5% take profit)
-            tsl (float): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
+            label_config (Dict[str, Any]): config for calculating labels
             num_candles_to_stack (int): number of time-steps for a single data-point
-            close_higher_label (Optional[int]): if not None will ignore tp and tsl. Instead label is
-                1 if close_{t + close_higher_label} > close_t
-                0 otherwise
             means (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's mean.
                 Used for normalisation. If not specified will calculate this.
             stds: (Optional[Dict[str, Dict[str, float]]]): dict mapping each feature name to it's std.
@@ -219,9 +216,10 @@ class StocksDatasetInMem(Dataset):
             stds = {}
 
         with Pool(procs) as p:
-            results = p.starmap(cls._preprocess_ticker, ((ticker, exchange, start_date, end_date, preprocessor,
-                                                         num_candles_to_stack, tp, tsl, candle_size, close_higher_label) 
-                                                        for ticker, exchange in tickers))
+            results = p.starmap(cls._preprocess_ticker, ((ticker, exchange, sectors[f"{ticker}_{exchange}"] if sectors else None, 
+                                                          start_date, end_date, preprocessor,
+                                                          num_candles_to_stack, label_config, candle_size) 
+                                                         for ticker, exchange in tickers))
             
         all_dfs = []
         lengths = []
@@ -231,7 +229,7 @@ class StocksDatasetInMem(Dataset):
                 lengths.append(len(res))
             else:
                 logger.warning(res)
-        
+
         data_df = pd.concat(all_dfs, ignore_index=True)
         logger.info(f"all data label counts:\n{data_df['labels'].value_counts(normalize=True)}")
 
@@ -241,6 +239,14 @@ class StocksDatasetInMem(Dataset):
         
         if perform_normalisation:
             preprocessor.normalise_df(data_df, means=means["asset"], stds=stds["asset"])
+        
+        if sectors:
+            if "sector_categorical" in features_to_use:
+                # convert from string to categorical
+                data_df["sector_categorical"], uniques = pd.factorize(data_df["sector"])
+                logger.info(f"Added sector_categorical feature. Num sectors: {len(uniques)}, they are {uniques}")
+
+            data_df = data_df.drop("sector", axis=1)
 
         num_nans = data_df.isna().sum().sum()
         assert num_nans == 0, f"Expected Number of NaNs prior to loading VIX to be 0, but was {num_nans}. NaNs per col:\n{dict(data_df.isna().sum())}"
@@ -331,8 +337,7 @@ class StocksDatasetInMem(Dataset):
     @staticmethod
     def preprocess_ticker(ticker: str, exchange: str, start_date: str, end_date: str, 
                           preprocessor: AssetPreprocessor, num_candles_to_stack: int, 
-                          tp: Optional[float] = None, tsl: Optional[float] = None, candle_size="1d",
-                          close_higher_label: Optional[int] = None,
+                          label_config: Dict[str, Any], candle_size="1d",
                           raise_invalid_data_exception=False) -> pd.DataFrame:
         """ Load preprocessed data for a ticker. Will not merge VIX data or perform normalisation.
 
@@ -343,14 +348,8 @@ class StocksDatasetInMem(Dataset):
             end_date (str): end date for data in yyyy-mm-dd format (exclusive)
             preprocessor (AssetPreprocessor): preprocessor to use
             num_candles_to_stack (int): number of time-steps for a single data-point
-            tp (Optional[float]): take profit value used for labelling (e.g. 0.05 for 5% take profit).
-                If None, wont perform labelling ("labels" col wont be present in returned df). Defaults to None.
-            tsl (Optional[float]): trailing stop loss value used for labelling (e.g. 0.05 for 5% trailing stop loss)
-                If None, wont perform labelling ("labels" col wont be present in returned df). Defaults to None
+            label_config (Dict[str, Any]): config for calculating labels
             candle_size (str): frequency of candles. "1d" or "1h". Defaults to "1d"
-            close_higher_label (Optional[int]): if not None will ignore tp and tsl. Instead label is
-                1 if close_{t + close_higher_label} > close_t
-                0 otherwise
             raise_invalid_data_exception (bool): when getting historical data from API, check that
                 there are no missing candles between start_date and end_date. If there is then
                 throw an exception if this arg is True. Otherwise just warn.
@@ -382,12 +381,9 @@ class StocksDatasetInMem(Dataset):
                            f"but it should be atleast {num_candles_to_stack - 1}.")
 
         # calculate labels
-        if (tp is not None and tsl is not None) or close_higher_label is not None:
-            if close_higher_label:
-                # TODO: only works for next close for now, make it work for close_{t + n}
-                df["labels"] = next_close_higher(df)
-            else:
-                df["labels"] = binary_label_tp_tsl(df, tp, tsl)
+        if label_config is not None:
+            label_func = getattr(labelling, label_config["label_function"])
+            df["labels"] = label_func(df, **label_config["kwargs"])
     
             logger.info(f"label counts:\n{df['labels'].value_counts(normalize=True)}")
             logger.info(f"labels has {(df['labels'].isna().sum() / len(df)) * 100}% NaNs, these will be removed.")
@@ -410,24 +406,24 @@ class StocksDatasetInMem(Dataset):
         return df
 
     @classmethod
-    def _preprocess_ticker(cls, ticker: str, exchange: str, start_date: str, 
-                           end_date: str, preprocessor: AssetPreprocessor,
-                           num_candles_to_stack: int, tp: Optional[float] = None, 
-                           tsl: Optional[float] = None, candle_size="1d",
-                           close_higher_label: Optional[int] = None) -> Union[pd.DataFrame, str]:
+    def _preprocess_ticker(cls, ticker: str, exchange: str, sector: Optional[str], 
+                           start_date: str, end_date: str, preprocessor: AssetPreprocessor,
+                           num_candles_to_stack: int, label_config: Dict[str, Any], candle_size="1d"
+                           ) -> Union[pd.DataFrame, str]:
         try:
-            return cls.preprocess_ticker(
+            df = cls.preprocess_ticker(
                 ticker=ticker, 
                 exchange=exchange, 
                 start_date=start_date, 
                 end_date=end_date, 
                 preprocessor=preprocessor, 
                 num_candles_to_stack=num_candles_to_stack, 
-                tp=tp, 
-                tsl=tsl, 
-                candle_size=candle_size, 
-                close_higher_label=close_higher_label
+                label_config=label_config,
+                candle_size=candle_size
             )
+            if sector:
+                df["sector"] = sector
+            return df
         except Exception as ex:
             logger.exception(f"Error while preprocessing ticker '{ticker}'.")
             return f"Error while preprocessing ticker '{ticker}': {ex}"

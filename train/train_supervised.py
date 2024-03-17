@@ -17,7 +17,7 @@ from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 
-from xgboost import XGBClassifier, plot_importance
+from xgboost import XGBClassifier
 from sklearn.metrics import roc_curve, classification_report
 from sklearn.base import ClassifierMixin
 from data_collection.historical_data import get_historical_data
@@ -38,9 +38,10 @@ TO DO:
 
     - Create XGBoost models to predict if 
         - close_{t + 1} > close_{t}, 
-        - close_{t + 1} > open_{t + 1}, 
-        - open_{t + 1} > close_{t}
-        - TP/TSL (4, 6) hit
+        - close_{t + 5} > close_{t}
+        - close_{t + 10} > close_{t}
+        - price in 10-days is greater than 5% of current price
+        - month as a number, sector as a number
       hyperparemeter tuning on validation set and early stopping
       test set acc, f1, ROC
 
@@ -52,23 +53,34 @@ TO DO:
          month_of_year)
       and use a lot of data (5000+ stocks from US, Canada, UK, EU)
     
-    - Create Markov chain for last 3 candles where each candle has the following posibilities:
-        - close_t > close_{t - 1}
-        - close_t > open_t
-        - open_t  > close_{t - 1}
+    - Create Markov chain equivalant of the ML model:
+        - 4 consecutive increasing closes?
+        - 4 consecutive decreasing closes?
+        - 4 consecutive green candles?
+        - 4 consecutive red candles?
         - neck > body
         - tail > body
-        - volume_t > volume_{t - 1} * 1.25
+        - VO > 5.0
         - NATR > 3.0
         - ADX > 25
         - MACD > 0
+        - MACD_t > MACD_{t - 1}
         - MACD_HIST > 0
+        - close_t > SMA50
+        - SMA50 > SMA200
         - low_t < bbands_lower_t
+        - low_{t - 1} < bbands_lower_{t - 1}
+        - low_{t - 2} < bbands_lower_{t - 2}
         - high_t > bbands_upper_t
+        - high_{t - 1} > bbands_upper_{t - 1}
+        - high_{t - 2} > bbands_upper_{t - 2}
         - bbands_width_t > bbands_width_{t - 1}
+        - bbands_width_{t - 1} > bbands_width_{t - 2}
         - STOCH_RSI > 0.9
         - STOCH_RSI < 0.1
-        - probably need to be candle specific about this
+        - MFI > 0.9
+        - MFI < 0.1
+        - close_{t + 10} > close_t
 
         Make sure there is enough data to estimate probability of each transition. If not
         try last 2 candles. Test Markov chain on same test used for ML models, is it competetive
@@ -139,13 +151,13 @@ def main(train_config: dict):
         datasets = np.load(train_config["data_npz_file"])
 
         train_dataset = StocksDatasetInMem(
-            tickers=None, 
+            tickers=None,
+            sectors=train_config["sectors"],
             features_to_use=train_config["features_to_use"],
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=None, 
             end_date=None, 
-            tp=None, 
-            tsl=None,
+            label_config=None,
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, 
             features=datasets["train_X"], 
@@ -156,12 +168,12 @@ def main(train_config: dict):
 
         val_dataset = StocksDatasetInMem(
             tickers=None, 
+            sectors=train_config["sectors"],
             features_to_use=train_config["features_to_use"],
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=None, 
             end_date=None, 
-            tp=None,
-            tsl=None, 
+            label_config=None,
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, 
             features=datasets["val_X"], 
@@ -172,12 +184,12 @@ def main(train_config: dict):
 
         test_dataset = StocksDatasetInMem(
             tickers=None, 
+            sectors=train_config["sectors"],
             features_to_use=train_config["features_to_use"],
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=None, 
             end_date=None, 
-            tp=None, 
-            tsl=None, 
+            label_config=None,
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, 
             features=datasets["test_X"], 
@@ -210,13 +222,12 @@ def main(train_config: dict):
         logger.info("Loading training data")
         train_dataset = StocksDatasetInMem(
             tickers=train_config["tickers"], 
+            sectors=train_config["sectors"],
             features_to_use=train_config["features_to_use"],
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=train_config["train_start_date"], 
             end_date=train_config["val_start_date"], 
-            tp=train_config["tp"], 
-            tsl=train_config["tsl"],
-            close_higher_label=train_config["close_higher_label"],
+            label_config=train_config["label_config"],
             num_candles_to_stack=train_config["num_candles_to_stack"], 
             candle_size=train_config["candle_size"],
             perform_normalisation=train_config["perform_feature_normalisation"]
@@ -230,13 +241,12 @@ def main(train_config: dict):
         logger.info("Loading validation data")
         val_dataset = StocksDatasetInMem(
             tickers=train_config["tickers"], 
+            sectors=train_config["sectors"],
             features_to_use=train_config["features_to_use"],
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=train_config["val_start_date"], 
             end_date=train_config["test_start_date"],
-            tp=train_config["tp"], 
-            tsl=train_config["tsl"],
-            close_higher_label=train_config["close_higher_label"],
+            label_config=train_config["label_config"],
             num_candles_to_stack=train_config["num_candles_to_stack"],
             means=means, 
             stds=stds, 
@@ -247,13 +257,12 @@ def main(train_config: dict):
         logger.info("Loading test data")
         test_dataset = StocksDatasetInMem(
             tickers=train_config["tickers"], 
+            sectors=train_config["sectors"],
             features_to_use=train_config["features_to_use"],
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=train_config["test_start_date"], 
             end_date=train_config["test_end_date"], 
-            tp=train_config["tp"], 
-            tsl=train_config["tsl"],
-            close_higher_label=train_config["close_higher_label"],
+            label_config=train_config["label_config"],
             num_candles_to_stack=train_config["num_candles_to_stack"],
             means=means, 
             stds=stds, 
@@ -534,19 +543,19 @@ def eval_model(classifier: nn.Module, val_dataloader: DataLoader,
     with open(classification_report_path, mode="w") as f:
         f.writelines([
             f"best_thresh = {best_thresh}\n",
-            "best_thresh_report:", best_thresh_report,
+            "best_thresh_report:\n", best_thresh_report,
 
             f"\nsafe_thresh = {safe_thresh}\n",
-            "safe_thresh_report:", safe_thresh_report,
+            "safe_thresh_report:\n", safe_thresh_report,
 
             f"\nsafe_thresh2 = 0.75\n",
-            "safe_thresh_report:", safe_thresh_report2,
+            "safe_thresh_report:\n", safe_thresh_report2,
 
             f"\nrisky_thresh = {risky_thresh}\n",
-            "risky_thresh_report", risky_thresh_report,
+            "risky_thresh_report:\n", risky_thresh_report,
 
             f"\nrisky_thresh2 = 0.25\n",
-            "risky_thresh_report", risky_thresh_report2
+            "risky_thresh_report:\n", risky_thresh_report2
         ])
 
 
@@ -596,27 +605,27 @@ def eval_sklearn_model(classifier: ClassifierMixin,
     with open(classification_report_path, mode="w") as f:
         f.writelines([
             f"best_thresh = {best_thresh}\n",
-            "best_thresh_report:", 
+            "best_thresh_report:\n", 
             best_thresh_report,
 
             f"\ndefault thresh = 0.5\n",
-            "default_thresh_report:", 
+            "default_thresh_report:\n", 
             def_thresh_report,
 
             f"\nsafe_thresh = {safe_thresh}\n",
-            "safe_thresh_report:", 
+            "safe_thresh_report:\n", 
             safe_thresh_report,
 
             f"\nsafe_thresh2 = 0.75\n",
-            "safe_thresh_report:", 
+            "safe_thresh_report:\n", 
             safe_thresh_report2,
 
             f"\nrisky_thresh = {risky_thresh}\n",
-            "risky_thresh_report", 
+            "risky_thresh_report:\n", 
             risky_thresh_report,
 
             f"\nrisky_thresh2 = 0.25\n",
-            "risky_thresh_report", 
+            "risky_thresh_report:\n", 
             risky_thresh_report2
         ])
 
