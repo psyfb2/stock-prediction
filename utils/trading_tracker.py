@@ -36,18 +36,14 @@ class TradingTracker:
 if __name__ == "__main__":
     tracker = TradingTracker(
         capital=10000, 
-        start_price=14.89, end_price=14.47, 
+        start_price=399.93, end_price=108.10,
         trades=[
-            (13.64, 13.79),  # sold on resistance (100day SMA, ub, srsi_ob, 4 increasing closes)
-            (13.51, 15.23),  # sold on resistancce (200day SMA, ub, srsi_ob, 5 increasing closes)
-            (15.32, 13.93),  # selling on down trend (broke all SMA's, hugging lb)
-            (13.93, 14.84),  # sold on resistance (200day SMA)
-            (14.64, 13.11),  # selling on big down day (big volume)
-            (14.84, 14.13),  # bbands squeeze to the downside
-            (13.38, 14.29),  # selling on resistance (SMAs, ub, SRSI_OB_signal)
-            (14.09, 12.84),  # selling on resistance (20daySMA)
-            (12.33, 13.17),  # selling on resistance (50day SMA, ub, SRSI_OS)
-            (12.28, 12.94),  # selling on resistance (50day SMA)
+            (399.93, 305.64), # selling on resistance (20sma, MFI divergence)
+            (292.12, 254.68), # avoid downtrend (broke 200sma with strong volume, hugging lb)
+            (316.64, 292.14), # big down day 
+            (312.16, 262.37), # avoiding downtrend (hugging lb)
+            (236.32, 209.39),
+            (190.95, 209.64)
         ]
     )
     

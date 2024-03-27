@@ -86,8 +86,7 @@ def predict(ticker: str, exchange_name: str) -> float:
         num_candles_to_stack=train_config["num_candles_to_stack"],
         candle_size=train_config["candle_size"],
         raise_invalid_data_exception=False,
-        tp=None,
-        tsl=None
+        label_config=None
     )
 
     # normalise df
@@ -124,6 +123,7 @@ def predict(ticker: str, exchange_name: str) -> float:
     # X has shape (1, num_candles_to_stack, D)
     X = df.drop(columns=list("toclhv")).to_numpy(dtype=np.float32)
     X = X[np.newaxis, -train_config["num_candles_to_stack"]:, :]
+    print(X.shape)
     X = torch.from_numpy(X)
 
     # use model to predict bullish probability

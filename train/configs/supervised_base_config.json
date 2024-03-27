@@ -4556,6 +4556,7 @@
     ["PDN", "ASX"]
   ],
   "sectors": {
+    "OGC_TSX": "Basic Materials",
     "A_NYSE": "Industrials",
     "AA_NYSE": "Industrials",
     "AAN_NYSE": "Miscellaneous",
@@ -9126,7 +9127,6 @@
     "sma50",
     "sma100",
     "sma200",
-    "atr",
     "vo",
     "v_perc_increase",
     "c_perc_increase",
@@ -9140,17 +9140,17 @@
   ],
   "vix_features_to_use": [],
   "perform_feature_normalisation": false,
-  "data_npz_file": null,
+  "data_npz_file": "datasets.npz",
   "train_start_date": "1998-01-01",
   "val_start_date": "2023-04-01",
   "test_start_date": "2023-11-01",
   "test_end_date": "2024-03-16",
-  "num_candles_to_stack": 5,
+  "num_candles_to_stack": 4,
   "candle_size": "1d",
   "label_config": {
     "label_function": "binary_label_close_higher",
     "kwargs": {
-      "candles_ahead": 5
+      "candles_ahead": 10
     }
   },
   "experiment_name": "xgboost_base_experiment",

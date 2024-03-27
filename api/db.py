@@ -23,6 +23,9 @@ def insert_probability_request(ticker: str, exchange_name: str, probability: flo
     15 minutes after the next market close date. This is to automatically
     clear up the DB and so that it can be used as a cache.
 
+    Also insert probability into probability_predictions collection, this
+    can be used to monitor model performance with real life inferences.
+
     Args:
         ticker (str): ticker symbol (e.g. 'AAPL')
         exchange_name (str): exchange which ticker is listen on (e.g. 'NASDAQ')
@@ -60,6 +63,9 @@ def insert_probability_request(ticker: str, exchange_name: str, probability: flo
     }
     logger.info(f"Inserting document into 'probability_cache' collection: {document}")
     api_db["probability_cache"].insert_one(document)
+
+    document.pop("expiresAt")
+    api_db["probability_predictions"].insert_one(document)
 
 
 def get_probability_request(ticker: str) -> Optional[dict]:
