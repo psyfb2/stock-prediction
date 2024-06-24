@@ -110,19 +110,39 @@ weighted avg       0.75      0.44      0.27     39679
 
 
 With a TP of 6% and TSL of 6%, the avg loss when the TSL is hit from the highest price is around 3.6%.
-The TSL was hit first on 56% of the candles (56% of candles have label 0). 
+The TSL was hit first on 56% of the candles (56% of candles have label 0 in test set). 
 
 To make a profit going long the precision on the buy threshold needs to be at-least 0.375, 
-if making random predictions the precision is 0.44 (that's why buy and hold has been profitable over the last 12 years)
-assuming the worst case scenario where every TSL results in a loss of 6% from the highest price the minimum precision should be 0.5
+if always long the precision is 0.44 (that's why buy and hold has been profitable over the last 12 years)
 
 To make a profit going short the precision on the sell threshold needs to be atleast 0.625
-if making random predicitions the precision is 0.56
+if always short the precision is 0.56
 
-potential trading strategy:
-	if pred >= 0.45:
-		place order with TP and TSL of 6%
-	if thresh <= 0.35:
-		sell
+Also note the precision of Buy doesn't increase as threshold increases. Therefore, the sweetspot for the probability to buy is probably between 0.4 and 0.6.
+Here are some strategies that you can use for this model:
+	1. Manual strategy. Set approximately 6% TP and 6% TSL order (can change these slightly based of technicals):
+		1. bullish fundementals (e.g. high EPS, high future earnings growth, economic factors, etc)
+		2. bullish market tone (i.e. shrugs off bad news, explodes on good news or is increasing on no known news (insider trading))
+		3. bullish technical (i.e. in an uptrend, bottom of sideways trading range)
+		4. 0.5 <= AI <= 0.6 (50% has slightly higher precision, although the recall is quite a bit lower, 
+		   that's fine though since you should be able to find a stock >= 0.5, if technicals look really good, than can use 0.4 as threshold)
+	
+	2. Auto-strategy 1. Set 6% TP and 6% TSL order when AI >= 0.5
+	
+	3. Auto-strategy 2. Long if AI >= 0.4, else neutral
+
+
+B&H strategy expected profit per trade (i.e. set TP of 6% and TSL of 6%):
+	= 6 * 0.44 - 3.6 * 0.56 = 0.624%
+Auto strategy expected profit per trade:
+	= 6 * 0.56 - 3.6 * 0.44 = 1.776%
+
+Now that comparison is not completely fair since B&H strat has 100% recall.
+So also taking into account the potential missed gains, Auto strategy expect profit:
+	= 0.6017 * (6 * 0.55 - 3.6 * 0.45) + (1 - 0.6017) * 0 = 1.015%
+0.6017 is (TP + FP) / n, the proportion of buy predictions out of all predictions, it can be calculated with (buy_recall * num_buy_predictions) / (num_predictions * buy_precision)
+
+
+
 
 

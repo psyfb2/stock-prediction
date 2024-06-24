@@ -6,7 +6,7 @@ torchaudio==2.1.2   # --index-url https://download.pytorch.org/whl/cu118
 xgboost==2.0.3
 pandas_market_calendars==4.3.3
 yfinance==0.2.34
-pandas_ta==0.3.14b0
+pandas_ta==0.3.14b0  # required python 3.9 as of 12-04-2024
 torchinfo==1.8.0
 tensorboard==2.15.1
 packaging==23.2

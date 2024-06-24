@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 #       (assuming data from 1998-2024, 26 features, 4 candles to stack, flattened get_full_data_matrix)
 
 class StocksDatasetInMem(Dataset):
+    DATASET_FILENAME = "/dataset.csv"
+    LENGTHS_FILENAME = "/lengths.npz"
+
     def __init__(self, tickers: List[List[str]], 
                  sectors: Optional[Dict[str, str]],
                  features_to_use: List[str], 
@@ -33,9 +36,9 @@ class StocksDatasetInMem(Dataset):
                  means: Optional[Dict[str, Dict[str, float]]] = None,
                  stds: Optional[Dict[str, Dict[str, float]]] = None,
                  candle_size: str ="1d", procs: Optional[int] = None, 
-                 features: Optional[np.ndarray] = None, 
-                 labels: Optional[np.ndarray] = None,
-                 lengths: Optional[int] = None,
+                 save_path: Optional[str] = None, 
+                 load_path: Optional[str] = None,
+                 recalculate_labels: bool = False,
                  perform_normalisation: bool = True):
         """ Initialise preprocessed dataset. Performs windowing at inference time to save memory
         (i.e. convert sample shape from (D, ) to (T, D) whenever getting the next data-point.
@@ -58,19 +61,56 @@ class StocksDatasetInMem(Dataset):
             candle_size (str): frequency of candles. "1d" or "1h"
             procs (Optional[int]): number of proccesses to use for data preprocessing (will perform map over tickers).
                 If None, will use os.cpu_count()
-            features (Optional[np.ndarray]): (N, D) array representing features. If this is given will ignore
-                tickers, start_date, end_date, label_config means, stds, candle_size and procs, as will treat
-                this as the dataset.
+            save_path (Optional[str]): path for where to save files to load later on. If None, will not save files to disk
+            load_path (Optional[str]): path for where to load previously saved files. If None, will perform preprocessing
+                to load data. If not None, will just load previously preprocessed dataset from disk.
+            recalculate_labels (bool): only applies when load_path is not None. Setting this true will ignore
+                the loaded labels and re-calculate the labels. This is useful if you are using a different label config
+                but the features are the same.
             labels (Optional[np.ndarray]): (N, ) array representing labels. If this is given will ignore
                 tickers, start_date, end_date, label_config, means, stds, candle_size and procs, as will treat
-                this as the dataset.
-            lengths (Optional[int]): represents calculated length of each ticker within features. If this is given will ignore
-                tickers, start_date, end_date, label_config means, stds, candle_size and procs, as will treat
                 this as the dataset.
             perform_normalisation (bool): normalise the data as part of the preprocessing step?
         """
         super().__init__()
-        if features is not None and labels is not None and lengths is not None:
+        if load_path is not None:
+            data_df = pd.read_csv(load_path + self.DATASET_FILENAME)
+            lengths = np.load(load_path + self.LENGTHS_FILENAME)["lengths"]
+
+            logger.info(f"Loaded data_df:\n{data_df}")
+
+            if recalculate_labels and label_config:
+                def df_iter():
+                    s = 0
+                    for i in range(len(lengths)):
+                        df = data_df.iloc[s : s + lengths[i]].copy(deep=True).reset_index(drop=True)
+                        df = df.dropna().reset_index(drop=True)
+                        s += lengths[i]
+                        yield df, label_config
+                
+                with Pool(procs) as p:
+                    results = p.starmap(self._calculate_labels, df_iter())
+                
+                new_dfs = []
+                new_lengths = []
+
+                for df in results:
+                    df = df.dropna().reset_index(drop=True)
+
+                    if len(df) < num_candles_to_stack:
+                        continue
+                    
+                    new_dfs.append(df)
+                    new_lengths.append(len(df))
+
+                data_df = pd.concat(new_dfs, ignore_index=True)
+                logger.info(f"all data label counts:\n{data_df['labels'].value_counts(normalize=True)}")
+                logger.info(f"difference in lengths: {np.sum(lengths) - np.sum(new_lengths)}")
+                lengths = np.array(new_lengths)
+
+            features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy(dtype=np.float32)  # (N, D)
+            labels   = data_df["labels"].to_numpy(dtype=np.int64)  # (N, )
+
             # perform some checks on data
             if features.shape[0] != np.sum(lengths):
                 raise ValueError(f"Length of features is {features.shape[0]}, but expected it to be {np.sum(lengths)}")
@@ -98,12 +138,17 @@ class StocksDatasetInMem(Dataset):
                 means=means, stds=stds, candle_size=candle_size, procs=procs,
                 perform_normalisation=perform_normalisation
             )
+            lengths = np.array(lengths)
+
+            if save_path is not None:
+                data_df.to_csv(save_path + self.DATASET_FILENAME, index=False)
+                np.savez(save_path + self.LENGTHS_FILENAME, lengths=lengths)
 
             self.features = data_df.drop(columns=list("toclhv") + ["labels"]).to_numpy(dtype=np.float32)  # (N, D)
             self.labels   = data_df["labels"].to_numpy(dtype=np.int64)  # (N, )
-            self.lengths  = np.array(lengths)  # (len(tickers), )
-            self.means = means
-            self.stds = stds
+            self.lengths  = lengths  # (len(tickers), )
+            self.means    = means
+            self.stds     = stds
 
         unique, counts = np.unique(self.labels, return_counts=True)
         self.label_counts = {l: c / self.labels.shape[0] for l, c in zip(unique, counts)}
@@ -306,7 +351,7 @@ class StocksDatasetInMem(Dataset):
         ).strftime("%Y-%m-%d")
         vix_df = vix_df[vix_df["t"] >= adjusted_start_date].reset_index(drop=True)
 
-        vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h"])
+        vix_df = vix_preprocessor.preprocess_ochl_df(vix_df).drop(columns=["o", "c", "l", "h", "v"])
 
         if calc_means:
             means["vix"] = dict(vix_df.mean(numeric_only=True))
@@ -334,8 +379,8 @@ class StocksDatasetInMem(Dataset):
 
         return data_df
     
-    @staticmethod
-    def preprocess_ticker(ticker: str, exchange: str, start_date: str, end_date: str, 
+    @classmethod
+    def preprocess_ticker(cls, ticker: str, exchange: str, start_date: str, end_date: str, 
                           preprocessor: AssetPreprocessor, num_candles_to_stack: int, 
                           label_config: Dict[str, Any], candle_size="1d",
                           raise_invalid_data_exception=False) -> pd.DataFrame:
@@ -380,17 +425,7 @@ class StocksDatasetInMem(Dataset):
             logger.warning(f"Ticker {ticker} data does not go back to {adjusted_start_date}. start_date_idx={start_date_idx}, "
                            f"but it should be atleast {num_candles_to_stack - 1}.")
 
-        # calculate labels
-        if label_config is not None:
-            label_func = getattr(labelling, label_config["label_function"])
-            df["labels"] = label_func(df, **label_config["kwargs"])
-    
-            logger.info(f"label counts:\n{df['labels'].value_counts(normalize=True)}")
-            logger.info(f"labels has {(df['labels'].isna().sum() / len(df)) * 100}% NaNs, these will be removed.")
-
-            nan_indicies = list(df.loc[pd.isna(df['labels']), :].index)
-            if not all([nan_indicies[i + 1] == nan_indicies[i] + 1 for i in range(len(nan_indicies) - 1)]):
-                logger.warning(f"NaN indicies not contigious: {nan_indicies}")
+        cls._calculate_labels(df=df, label_config=label_config)
 
         # drop any rows with NaN or inf 
         original_len = len(df)
@@ -403,6 +438,17 @@ class StocksDatasetInMem(Dataset):
             raise ValueError(f"ticker '{ticker}' with start_date={start_date}, end_date={end_date} and candle_size={candle_size} "
                              f"only has {len(df)} candles after preprocessing. This is less than num_candles_to_stack={num_candles_to_stack}.")
 
+        return df
+
+    @staticmethod
+    def _calculate_labels(df: pd.DataFrame, label_config: Optional[Dict[str, Any]]) -> pd.DataFrame:
+        if label_config is not None:
+            label_func = getattr(labelling, label_config["label_function"])
+            df["labels"] = label_func(df, **label_config["kwargs"])
+
+            logger.info(f"label counts:\n{df['labels'].value_counts(normalize=True)}")
+            logger.info(f"labels has {(df['labels'].isna().sum() / len(df)) * 100}% NaNs, these will be removed.")
+        
         return df
 
     @classmethod

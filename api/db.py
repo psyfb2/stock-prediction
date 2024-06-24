@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime, date, timedelta, timezone
-from typing import Optional
+from typing import Optional, List
 
 import pandas_market_calendars as mcal
 from pymongo import MongoClient
@@ -82,3 +82,25 @@ def get_probability_request(ticker: str) -> Optional[dict]:
     doc = api_db["probability_cache"].find_one({"ticker": ticker})
     logger.info(f"Got cached result for ticker '{ticker}':\n{doc}")
     return doc
+
+
+def get_probability_predictions(start_date: str, end_date: str) -> List[dict]:
+    """ Get all predictions made between start_date and end_date.
+
+    Args:
+        start_date (str): date string in the format "YYYY-MM-DD". Will only consider predictions
+            made after this date. Inclusive.
+        end_date (str): date stirng in the format "YYYY-MM-DD". Will only consider predictions
+            made before this date. Exclusive.
+
+    Returns:
+        List[dict]: list of documents with keys "createdAt", "ticker", "probability".
+    """
+    start_date = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date   = datetime.strptime(end_date, "%Y-%m-%d")
+
+    docs = list(api_db["probability_predictions"].find({
+        "createdAt": {"$gte": start_date, "$lt": end_date}
+    }))
+    logger.info(f"Got {len(docs)} predictions between {start_date} and {end_date}")
+    return docs

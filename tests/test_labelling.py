@@ -3,7 +3,7 @@ import unittest
 import pandas as pd
 import numpy as np
 
-from data_preprocessing.labelling import binary_label_tp_tsl, binary_label_close_higher
+from data_preprocessing.labelling import binary_label_tp_tsl, binary_label_close_higher, binary_label_perc_change
 
 class TestDataCollection(unittest.TestCase):
     def test_binary_label_tp_tsl(self):
@@ -124,6 +124,22 @@ class TestDataCollection(unittest.TestCase):
         )
 
         labels = binary_label_close_higher(df, 4)
+        self.assertTrue(df["r"].equals(labels))
+    
+
+    def test_binary_label_perc_change(self):
+        df = pd.DataFrame(
+            {
+                "o": [9,  12, 13, 9, 15],
+                "c": [10, 13, 12, 9, 9.8],
+                "h": [13, 14, 14, 9, 15],
+                "l": [8,  9,  10, 9, 15],
+                # expected result
+                "r": [1,  0,  0,  0, np.nan]
+            }
+        )
+
+        labels = binary_label_perc_change(df, 1, 0.10)
         self.assertTrue(df["r"].equals(labels))
 
 

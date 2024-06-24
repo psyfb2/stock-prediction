@@ -63,7 +63,7 @@ def binary_label_close_higher(df: pd.DataFrame, candles_ahead: int) -> pd.Series
         df (pd.DataFrame): df containing columns ["o", "c", "h", "l"]
         candles_ahead (int): num candles in the future for comparison. Must be atleast one.
     Returns:
-        pd.Series: series with same number of rows as df, last value will be NaN
+        pd.Series: series with same number of rows as df, last candle_ahead values will be NaN
     """
     if len({"o", "c", "l", "h"}.difference(set(df.columns))) > 0:
         raise ValueError(f"Argument 'df' must contain columns ['o', 'c', 'h', 'l']. Got columns {list(df.columns)}")
@@ -75,6 +75,28 @@ def binary_label_close_higher(df: pd.DataFrame, candles_ahead: int) -> pd.Series
 
     return labels
 
+
+def binary_label_perc_change(df: pd.DataFrame, candles_ahead: int, target_perc: float) -> pd.Series:
+    """ Calculate series which will have value of
+    1 if close_{t + candles_ahead} > close_{t} * (1 + target_perc)
+    0 otherwise
+
+    Args:
+        df (pd.DataFrame): df containing columns ["o", "c", "h", "l"]
+        candles_ahead (int): num candles in the future for comparison. Must be atleast one.
+        target_perc (float): target percentage increase
+    Returns:
+        pd.Series: series with same number of rows as df, last candle_ahead values will be NaN
+    """
+    if len({"o", "c", "l", "h"}.difference(set(df.columns))) > 0:
+        raise ValueError(f"Argument 'df' must contain columns ['o', 'c', 'h', 'l']. Got columns {list(df.columns)}")
+    if candles_ahead < 1:
+        raise ValueError(f"candles_ahead must not be less than 1, got value: {candles_ahead}")
+    
+    labels = (df['c'] * (1 + target_perc) < df['c'].shift(periods=-candles_ahead) ).astype(int)
+    labels.iloc[-candles_ahead:] = np.NaN
+
+    return labels
 
 def perc_change(a: float, b: float) -> float:
     """ calculate percentage change from a to b

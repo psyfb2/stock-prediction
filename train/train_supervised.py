@@ -33,99 +33,111 @@ from utils.early_stopping import EarlyStopper
 logger = logging.getLogger(__name__)
 
 """
+2 new metrics:
+    1. avg daily return (profit per candle) = (candle_return_1 + ... + candle_return_n) / n
+       This tells you how much profit you should expect to make per candle (close to close).
+       Can also calculate std deviation of daily returns and give sharpe ratio (expected daily return - daily risk free rate / std),
+       which will tell you how good the returns are relative to the uncertatainty around those returns.
+       Obviously want to maximize expected daily return, but have a small std is really good too,
+       because it means you are having consistent returns and you can be more sure that your returns
+       are because your strategy is good and not just lucky. Btw daily risk free rate for 5.25% 3 month treassury is 0.02
+
+    2. risk adjusted return = profit / exposure
+       This tells you how much profit you expect to make if you were long the whole time by utilising multiple assets.
+       When trading a single stock, your risk adjusted return should be higher than the B&H profit of that stock.
+       The rar should also be higher than S&P-500 return in the same timeframe. So if trading for 252 candles,
+       rar should be higher than S&P-500 avg annual return. If trading for 20 candles, rar should be higher
+       than S&p500 avg 20-candle return (can estimate this by knowing avg daily S&P500 return and compounding over 20 candles).
+    
+    btw, a note on diversifying trades. Assume we have X_i ~ {a w.p. p, -b w.p. 1-p}, which represents a TP-SL bet from our model.
+    If we just bet 100% of our equity at a time, then profit will be (ignored compounding) S_n = X_1 + ... + X_n.
+    E[S_n] = n*E[X], Var[S_n] = n*Var(x)
+    The probability of losing money (i.e. S_n < 0) as n increases goes to 0, however the variance increases. This is not great because
+    it means there is a lot of uncertainaty, around what the profit will be, say on an annual basis. Instead it would be better
+    to bet 1/k of equity on k trades at the same time. So we have Y_i = (X_1 + .... + X_k) / k.
+    E[Y_i] = E[X], Var[Y_i] = Var(X) / k
+    as k increases, Y_i approaches our expected profit of a trade in probability. This is great as it removes the uncertainty.
+    So now if S_n = Y_1 + ... + Y_n , our annual profit will have much less variance and for example, annual profits should be
+    relatively consistent. 
+    Practically what this means is that you should have as many high confidence trades on as possible at the same time,
+    but making sure not to have any unitilised capital 
+    (i.e. maximize k with constraint of not having any equity not being used in a trade, meaning there is k high confidence trades always available).
+    
+
 TO DO:
-    how to test each strategy?
+    - sep up model drift monitoring for mlp
 
-    - Create XGBoost models to predict if 
-        - close_{t + 1} > close_{t}, 
-        - close_{t + 5} > close_{t}
-        - close_{t + 10} > close_{t}
-        - price in 10-days is greater than 5% of current price
-        - month as a number, sector as a number
-      hyperparemeter tuning on validation set and early stopping
-      test set acc, f1, ROC
-
-      Also use a reduced feature set
-        (l to o, o to c, c to high, c_perc_change, v_perc_change,
-         percentile_6month, percentile_1y, 
-         bbands, mfi, uo, adx (no +- signal), macd, stoch_rsi (no ma), stoch_osc (no ma), natr, 
-         50day_sma,  100day_sma, 200day_sma, c_perc_change_ema_10, 
-         month_of_year)
-      and use a lot of data (5000+ stocks from US, Canada, UK, EU)
+    - refactor code
     
-    - Create Markov chain equivalant of the ML model:
-        - 4 consecutive increasing closes?
-        - 4 consecutive decreasing closes?
-        - 4 consecutive green candles?
-        - 4 consecutive red candles?
-        - neck > body
-        - tail > body
-        - VO > 5.0
-        - NATR > 3.0
-        - ADX > 25
-        - MACD > 0
-        - MACD_t > MACD_{t - 1}
-        - MACD_HIST > 0
-        - close_t > SMA50
-        - SMA50 > SMA200
-        - low_t < bbands_lower_t
-        - low_{t - 1} < bbands_lower_{t - 1}
-        - low_{t - 2} < bbands_lower_{t - 2}
-        - high_t > bbands_upper_t
-        - high_{t - 1} > bbands_upper_{t - 1}
-        - high_{t - 2} > bbands_upper_{t - 2}
-        - bbands_width_t > bbands_width_{t - 1}
-        - bbands_width_{t - 1} > bbands_width_{t - 2}
-        - STOCH_RSI > 0.9
-        - STOCH_RSI < 0.1
-        - MFI > 0.9
-        - MFI < 0.1
-        - close_{t + 10} > close_t
-
-        Make sure there is enough data to estimate probability of each transition. If not
-        try last 2 candles. Test Markov chain on same test used for ML models, is it competetive
-        in terms of accuracy and F1 for the three prediction tasks? 
-
-        Then calculate confidence interval adjusted transition probabilities,
-        each transition prob in markov chain = prob - 95% CI. The markov chain probabilities will no
-        longer add to one, but this will be used as a kind of safety net, especially when we are uncertain
-        about the estimated transition probability.
+    - Create XGBoost, MLP models to predict if 
+        - c_{t} < c_{t + 1},
+        - c_{t} < c_{t + 5},
+        - c_{t} < c_{t + 10},
+        - price change in 10 candles is more than 5%
+        - tp-tsl ([6, 6], [6, 9])
+        - tp-tsl only close ([6, 6], [6, 9])
+        - tp-sl ([6, 4], [6, 5], [6, 6], [5, 4])
+        - tp-sl only close ([6, 4], [6, 5], [6, 6], [5, 4])
         
-
-    - Testing a trading strategy
-        use a second test set for testing trading strategy
-        Strategy 1:
-            if transition to a close_t > close_{t - 1} state has probability > 50
-                
-                if CI adjusted transition probability > 51 and ML predicts close_t > close_{t - 1}
-                    Given that close_t > close_{t - 1}, 
-                    if P(open_t < close_{t - 1}) > 50 buy on the next open, otherwise buy on the close, sell on next close
-            
-            elif transition to a close_t > open_t state has probability > 50
-                if CI adjusted transition probability > 51 and ML predicts close_t > open_t 
-                    buy on next open, sell on next close
-            
-            elif transition to a open_t > close_{t - 1} state has probability > 50
-                if CI adjusted transition probability > 51 and ML predicts open_t > close_{t - 1}
-                    buy on close, sell on next open
-            
-            also if had a sell on next close from the last timestep and this timestep have a buy on close, 
-            cancel the previous sell order and stay long to save on commissions.
+      use marketcap > 6B
+      Make tp-tsl and tp-sl label functions more efficient 
+      Use ^VIX to get VIX data, also make data cache more efficient (DONE)
+      hyperparemeter tuning on validation set and early stopping
+      model selection on validation set (using ppc, ppc calculation can be on a subsample to save time, plot ppc histogram,
+        also classification report, plot ROC curve, expectation calculations, just manually validate the best ppc model)
+      test set classification report, ROC, expectation calculations, ppc on best model using tuned threshold
+      accept if ppc_tuned_thresh > spx_pcc, ppc_tuned_thresh > long_term_ppc, precision_tuned_thresh > random precision, acc_0.5_thresh > most_common_acc + 0.03
+      
+      A high precision model is preferred (even if it has low recall), since there are hundreds of different stocks to possibly trade.
+      The same is true for a high profit factor model. Ultimately, we want to maximize profit, but when considering individual stocks,
+      we can always assume there will always be an oppurtinity to be long out of all stocks, therefore, highest profit factor or precision models
+      are the best even though they may have a low recall.
+      
+    - RL model:
+        - env:
+            - daily candles, observation and action on day close
+            - reward is differential sharpe ratio
+            - episodes is full length of train data for a single stock
+        
+        - model:
+            - GTrXLNet
+            - APPO
+            - validation set early stopping (episode reward mean)
     
-        Calculate Profit, Sharpe Ratio, Win Rate, Bought lower Rate, Avg Profit per Trade, Best Trade, Worst Trade, Exposure, B&H profit
-        across all stocks in test test and compare with equally weighted B&H profit.
+        - hyperparameter tuning (pick combination which maximizes validation episode reward mean):
+            - try small, medium, big GTrXLNet
+            - try action spaces:
+                - {0: neutral position, 1: long position}
+            - change in profit per candle reward (if you have time), 
+              change in rar (profit / exposure)
+        
+        - test single best model for each reward:
+            - stats (avg B&H profit, avg profit, avg sharpe ratio, avg profit factor, win rate, profit per candle when long, etc)
+            - plot trades for each ticker
+            - plot profit per candle when long distribution (histogram)
 
-        One thing to keep in mind is that in the backtesting we assume we can know the true close price and volume
-        before placing a trade on the close. However in reality this is not the case since we trade e.g. 5 mins before close.
-        Calculations for 15 stocks using yfinance querying 5 mins before close and then the day after shows
-        an average price deviation of the price 5 mins before close and actual close is 0.07% and average volume increase is 18.35%.
-        So in a real life application it's recomended to artificially raise the voume by 18%, the deviation in the close is acceptable.
-        Once a broker is decided I would retest this with chosed broker data collection.
+            - check exposure on validation set to determine correct N for each model.
+            
+            - accept model if profit per candle when long > S&P-500 profit per candle
 
-    - Future improvements:
-        - There are 8 combinations of c_t > c_{t - 1}, c_t > o_t, o_t > c_{t - 1}, but only 6 of them are physically possible.
-          For the ML model train a single multi-label classification model with logical constraints (see: https://arxiv.org/pdf/2103.13427.pdf)
-          and use it if it performs better on the test set for the three predictions.
+    Another thing is you must consider how these RL models will be used. For example:
+        1. portfolio of n stocks. Each stock has capital/n weighting (equally weighted). In this case,
+           CIPV would be the best reward, since a high precision but low recall model would not be
+           able to take advantage of those high confidence bets because of the equal weighting.
+        
+        2. If you think of a real life trader. They find good trade setups out of hundreds of stocks, then
+           bet big on the promising trades. They do not use equal weighting. This is exactly what a high precision
+           and low recall model needs, such as CIPV + drawdown penalty. So one could use the following trading strategy:
+            - maximum of n stocks which can be traded at the same time
+            - just before close at each candle, preprocess data, get output of each model,
+              go long on n - num_positions_open with size 1/n on the stocks whose model has long output.
+
+    One thing to keep in mind is that in the backtesting we assume we can know the true close price and volume
+    before placing a trade on the close. However in reality this is not the case since we trade e.g. 5 mins before close.
+    Calculations for 15 stocks using yfinance querying 5 mins before close and then the day after shows
+    an average price deviation of the price 5 mins before close and actual close is 0.07% and average volume increase is 18.35%.
+    So in a real life application it's recomended to artificially raise the voume by 18%, the deviation in the close is acceptable.
+    Once a broker is decided I would retest this with chosed broker data collection.
 """
 
 
@@ -146,10 +158,7 @@ def main(train_config: dict):
     model_cfg = train_config["model_config"]
 
     # load and preprocess data
-    if train_config["data_npz_file"]:
-        # load data arrays which have previously been preprocessed
-        datasets = np.load(train_config["data_npz_file"])
-
+    if train_config["load_data_path"] is not None:
         train_dataset = StocksDatasetInMem(
             tickers=None,
             sectors=train_config["sectors"],
@@ -157,12 +166,11 @@ def main(train_config: dict):
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=None, 
             end_date=None, 
-            label_config=None,
+            label_config=train_config["label_config"],
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, 
-            features=datasets["train_X"], 
-            labels=datasets["train_y"], 
-            lengths=datasets["train_lengths"],
+            load_path=train_config["load_data_path"] + "train_dataset/",
+            recalculate_labels=train_config["recalculate_labels"],
             perform_normalisation=train_config["perform_feature_normalisation"]
         )
 
@@ -173,12 +181,11 @@ def main(train_config: dict):
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=None, 
             end_date=None, 
-            label_config=None,
+            label_config=train_config["label_config"],
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, 
-            features=datasets["val_X"], 
-            labels=datasets["val_y"], 
-            lengths=datasets["val_lengths"],
+            load_path=train_config["load_data_path"] + "val_dataset/",
+            recalculate_labels=train_config["recalculate_labels"],
             perform_normalisation=train_config["perform_feature_normalisation"]
         )
 
@@ -189,12 +196,11 @@ def main(train_config: dict):
             vix_features_to_use=train_config["vix_features_to_use"],
             start_date=None, 
             end_date=None, 
-            label_config=None,
+            label_config=train_config["label_config"],
             num_candles_to_stack=train_config["num_candles_to_stack"],
             candle_size=None, 
-            features=datasets["test_X"], 
-            labels=datasets["test_y"], 
-            lengths=datasets["test_lengths"],
+            load_path=train_config["load_data_path"] + "test_dataset/",
+            recalculate_labels=train_config["recalculate_labels"],
             perform_normalisation=train_config["perform_feature_normalisation"]
         )
 
@@ -202,21 +208,25 @@ def main(train_config: dict):
         # load all data for tickers into file cache (this is only neccessary 
         # because of yfinance 2K requests rate limit per hour)
         # loading into file cache means 1 req per ticker instead of 3 (train, val, test)
-        preprocessor = AssetPreprocessor(features_to_use=train_config["features_to_use"], 
-                                         candle_size=train_config["candle_size"])
+        # preprocessor = AssetPreprocessor(features_to_use=train_config["features_to_use"], 
+        #                                  candle_size=train_config["candle_size"])
     
-        adjusted_start_date = preprocessor.adjust_start_date(
-            parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
-        ).strftime("%Y-%m-%d")
+        # adjusted_start_date = preprocessor.adjust_start_date(
+        #     parse(train_config["train_start_date"]), train_config["num_candles_to_stack"]
+        # ).strftime("%Y-%m-%d")
 
-        for ticker, exchange in train_config["tickers"]:
-            get_historical_data(
-                symbol=ticker, 
-                start_date=adjusted_start_date, 
-                end_date=train_config["test_end_date"],
-                candle_size=train_config["candle_size"], 
-                exchange=exchange
-            )
+        # for ticker, exchange in train_config["tickers"]:
+        #     get_historical_data(
+        #         symbol=ticker, 
+        #         start_date=adjusted_start_date, 
+        #         end_date=train_config["test_end_date"],
+        #         candle_size=train_config["candle_size"], 
+        #         exchange=exchange
+        #     )
+
+        os.makedirs(local_storage_dir + "train_dataset/")
+        os.makedirs(local_storage_dir + "val_dataset/")
+        os.makedirs(local_storage_dir + "test_dataset/")
 
         # load preprocessed datasets (train, val, test)
         logger.info("Loading training data")
@@ -230,6 +240,7 @@ def main(train_config: dict):
             label_config=train_config["label_config"],
             num_candles_to_stack=train_config["num_candles_to_stack"], 
             candle_size=train_config["candle_size"],
+            save_path=local_storage_dir + "train_dataset/",
             perform_normalisation=train_config["perform_feature_normalisation"]
         )
 
@@ -251,6 +262,7 @@ def main(train_config: dict):
             means=means, 
             stds=stds, 
             candle_size=train_config["candle_size"],
+            save_path=local_storage_dir + "val_dataset/",
             perform_normalisation=train_config["perform_feature_normalisation"]
         )
 
@@ -267,13 +279,9 @@ def main(train_config: dict):
             means=means, 
             stds=stds, 
             candle_size=train_config["candle_size"],
+            save_path=local_storage_dir + "test_dataset/",
             perform_normalisation=train_config["perform_feature_normalisation"]
         )
-
-        np.savez(local_storage_dir + "datasets.npz",
-                 train_X=train_dataset.features, train_y=train_dataset.labels, train_lengths=train_dataset.lengths,
-                 val_X=val_dataset.features,     val_y=val_dataset.labels,     val_lengths=val_dataset.lengths,
-                 test_X=test_dataset.features,   test_y=test_dataset.labels,   test_lengths=test_dataset.lengths)
     
     logger.info(f"Train dataset length = {len(train_dataset)}, with label counts: {train_dataset.label_counts}")
     logger.info(f"Val dataset length = {len(val_dataset)}, with label counts: {val_dataset.label_counts}")
@@ -709,10 +717,10 @@ def calculate_optimal_threshold_sklearn_model(classifier: ClassifierMixin,
     best_thresh_idx = np.argmax(tpr - fpr)
     best_thresh = thresholds[best_thresh_idx]
 
-    safe_thresh_idx = np.argmax(tpr - 2 * fpr)
+    safe_thresh_idx = np.argmax(tpr - 1.5 * fpr)
     safe_thresh = thresholds[safe_thresh_idx]
 
-    risky_thresh_idx = np.argmax(2 * tpr - fpr)
+    risky_thresh_idx = np.argmax(1.5 * tpr - fpr)
     risky_thresh = thresholds[risky_thresh_idx]
 
     if plot_fn is not None:

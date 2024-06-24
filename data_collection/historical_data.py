@@ -8,7 +8,6 @@ from typing import List
 import pandas as pd
 import yfinance as yf
 import pandas_market_calendars as mcal
-import bs4 as bs
 from dateutil.parser import parse
 
 logger = logging.getLogger(__name__)
@@ -98,7 +97,7 @@ def get_historical_data(symbol: str, start_date: str, end_date: str,
         start_date (str): start date in yyyy-mm-dd format, inclusive
         end_date (str): end date in yyyy-mm-dd format, exclusive
         candle_size (str, optional): candle size to use. Defaults to '1d'.
-        exchange (str, optional): exchange to use, by default will use primary exchange for symbol.
+        exchange (str, optional): exchange to use, by default will try to use primary exchange for symbol.
         outside_rth (bool, optional): get outside regular trading hours data too? Defaults to False.
         raise_invalid_data_exception (bool, optional): raise an exception if requested data contains
             missing rows? If False will just log a warning.
@@ -213,7 +212,8 @@ def get_exchange(symbol: str) -> str:
         "BTS": "BATS",
         "TOR": "TSX",
         "AX":  "ASX",
-        "DE":  "ETR"
+        "DE":  "ETR",
+        "CXI": "CBOE_Equity_Options"
     }
 
     logger.info(f"Making request to yfinance to get exchange for ticker '{symbol}'")
@@ -330,7 +330,25 @@ def get_last_full_trading_day(market_calander_name="NASDAQ") -> datetime:
     return valid_days[-1].to_pydatetime()
 
 
-def get_vix_daily_data(vix_ticker: str) -> pd.DataFrame:
+def get_most_recent_trading_day(date: datetime, market_calander_name="NASDAQ") -> datetime:
+    """ Get the most recent trading day before or on a given date.
+
+    Args:
+        date (datetime): date to get most recent trading day for
+        market_calander_name (str, optional): market to use. Defaults to "NASDAQ".
+
+    Returns:
+        datetime: most recent trading day before or on given date
+    """
+    exchange = mcal.get_calendar(market_calander_name)
+    valid_days = exchange.valid_days(
+        start_date=(date - timedelta(days=30)).strftime("%Y-%m-%d"), 
+        end_date=date.strftime("%Y-%m-%d")
+    )
+    return valid_days[-1].to_pydatetime()
+
+
+def get_vix_daily_data(vix_ticker: str = "VIX") -> pd.DataFrame:
     """ get daily vix data until the last trading day.
 
     Args:
@@ -344,22 +362,7 @@ def get_vix_daily_data(vix_ticker: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame: dataframe containing vix data
     """
-    vix_folder = CACHE_DIR + os.sep + "vix_data"
-    if not os.path.exists(vix_folder):
-        os.makedirs(vix_folder)
-    file_prefix =  vix_folder + os.sep + vix_ticker
-
-    try:
-        df = pd.read_csv(file_prefix + datetime.today().strftime('%Y-%m-%d') + ".csv")
-    except FileNotFoundError:
-        logger.info(f"Making request to CBOE for {vix_ticker} data")
-        df = pd.read_csv(f"https://cdn.cboe.com/api/global/us_indices/daily_prices/{vix_ticker}_History.csv")
-        df = df.rename(columns={"DATE": "t", "OPEN": "o", "CLOSE": "c", "LOW": "l", "HIGH": "h", 
-                                "VVIX": "c", "VXN": "c", "GVZ": "c", "OVX": "c"})
-        df.to_csv(file_prefix + datetime.today().strftime('%Y-%m-%d') + ".csv", index=False)
-
-    df["t"] = pd.to_datetime(df["t"])
-    return df
+    return get_historical_data(f"^{vix_ticker}", start_date="1990-01-01", end_date=datetime.today().strftime('%Y-%m-%d'))
 
 
 if __name__ == "__main__":
